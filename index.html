@@ -58,23 +58,23 @@
 /* ============================================================
    STEP 1 — paste your Supabase project values here (Settings → API)
    ============================================================ */
-const SUPABASE_URL  = "https://odeeeqijahjqgrozptgk.supabase.co";       // e.g. https://abcd1234.supabase.co
-const SUPABASE_ANON = "sb_publishable_6SOmSq9XCSH-tokEoZTnbg_DMhhordC";   // the long "anon public" key
+const SUPABASE_URL  = "https://odeeeqijahjqgrozptgk.supabase.co";
+const SUPABASE_ANON = "sb_publishable_6SOmSq9XCSH-tokEoZTnbg_DMhhordC";
 /* ============================================================ */
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 /* ----------------------------- model ---------------------------------- */
 const SECTIONS=[
-  {name:"Shaheen",min:7,max:11,group:"Parwaz",color:"#0d6e63"},
-  {name:"Boy Scout",min:12,max:17,group:"Patrol",color:"#2563a6"},
-  {name:"Rover",min:17,max:25,group:"Patrol",color:"#8a4fb0"},
+  {name:"Shaheen",min:7,max:11,group:"Parwaz",indiv:"Shaheen",color:"#0d6e63"},
+  {name:"Boy Scout",min:12,max:17,group:"Patrol",indiv:"Scout",color:"#2563a6"},
+  {name:"Rover",min:17,max:25,group:"Patrol",indiv:"Rover",color:"#8a4fb0"},
 ];
 const MEMBER_TYPES=["Scout","Leader","Senior Leader"];
 const LEADER_ROLES=["GSL","Section Leader","Finance Member","Secretary","Assistant Leader"];
-const sectionMeta=n=>SECTIONS.find(s=>s.name===n)||{color:"#5b6b7b",group:"Group"};
+const sectionMeta=n=>SECTIONS.find(s=>s.name===n)||{color:"#5b6b7b",group:"Group",indiv:"Member"};
 
-let state={institution:"",association:"",patrols:{},rankBadges:{},proficiencyBadges:[],members:[],sessions:{}};
+let state={institution:"",association:"",patrols:{},rankBadges:{},proficiencyBadges:[],members:[],sessions:{},activities:{}};
 let currentUser=null,currentRole="scout",canEdit=false,tab="dash";
 
 /* ----------------------------- helpers -------------------------------- */
@@ -82,6 +82,7 @@ const $=s=>document.querySelector(s);
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function ageFrom(dob){if(!dob)return null;const d=new Date(dob);if(isNaN(d))return null;const t=new Date();let a=t.getFullYear()-d.getFullYear();const m=t.getMonth()-d.getMonth();if(m<0||(m===0&&t.getDate()<d.getDate()))a--;return a;}
 function lastSunday(){const t=new Date();const s=new Date(t);s.setDate(t.getDate()-t.getDay());return s.toISOString().slice(0,10);}
+function nextSunday(){const t=new Date();const s=new Date(t);const d=t.getDay();s.setDate(t.getDate()+((7-d)%7));return s.toISOString().slice(0,10);}
 function fmtDate(s){return s?new Date(s).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—";}
 function nextId(){let m=0;state.members.forEach(x=>{const n=parseInt(String(x.id).replace(/\D/g,""),10);if(!isNaN(n)&&n>m)m=n;});return"KSG-"+String(m+1).padStart(4,"0");}
 function uid(){return Date.now()+"."+Math.floor(Math.random()*1e6);}
@@ -102,10 +103,12 @@ async function loadAll(){
     proficiencyBadges:c.proficiencyBadges||[],
     members:map.members||[],
     sessions:map.sessions||{},
+    activities:map.activities||{},
   };
 }
 async function saveMembers(){const{error}=await sb.from("registry").upsert({key:"members",value:state.members});if(error)toast("Save failed: "+error.message);}
 async function saveSessions(){const{error}=await sb.from("registry").upsert({key:"sessions",value:state.sessions});if(error)toast("Save failed: "+error.message);}
+async function saveActivities(){const{error}=await sb.from("registry").upsert({key:"activities",value:state.activities});if(error)toast("Save failed: "+error.message);}
 async function saveConfig(){const cfg={institution:state.institution,association:state.association,patrols:state.patrols,rankBadges:state.rankBadges,proficiencyBadges:state.proficiencyBadges};const{error}=await sb.from("registry").upsert({key:"config",value:cfg});if(error)toast("Save failed: "+error.message);}
 
 /* ============================== auth =================================== */
@@ -160,7 +163,7 @@ async function logout(){await sb.auth.signOut();currentUser=null;renderAuth();}
 
 /* ============================== shell ================================= */
 function renderApp(){
-  const tabs=[["dash","🏕️ Dashboard"],["members","👥 Members"],["sessions","✅ Attendance & Marks"],["board","🏆 Leaderboard"]];
+  const tabs=[["dash","🏕️ Dashboard"],["members","👥 Members"],["sessions","✅ Attendance & Marks"],["board","🏆 Leaderboard"],["planner","🗓️ Sunday Planner"]];
   if(canEdit)tabs.push(["settings","⚙️ Settings"]);
   $("#app").innerHTML=`<div class="wrap">
     <div class="row" style="justify-content:space-between;margin-bottom:6px">
@@ -175,7 +178,7 @@ function renderApp(){
     <div id="content"></div></div>`;
   $("#logoutBtn").onclick=logout;
   $("#tabbar").querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;renderApp();});
-  ({dash:renderDash,members:renderMembers,sessions:renderSessions,board:renderBoard,settings:renderSettings}[tab]||renderDash)();
+  ({dash:renderDash,members:renderMembers,sessions:renderSessions,board:renderBoard,planner:renderPlanner,settings:renderSettings}[tab]||renderDash)();
 }
 
 /* ============================== dashboard ============================= */
@@ -188,14 +191,14 @@ function renderDash(){
   let winners="";
   if(latest){winners=SECTIONS.map(s=>{
     const sess=state.sessions[latest+"|"+s.name];if(!sess)return"";
-    const rows=Object.entries(sess.records).map(([k,v])=>({m:state.members.find(x=>x._k==k),...v})).filter(r=>r.m);
+    const rows=Object.entries(sess.records).map(([k,v])=>({m:state.members.find(x=>x._k==k),...v})).filter(r=>r.m&&r.m.memberType==="Scout");
     const ts=[...rows].sort((a,b)=>(b.points||0)-(a.points||0))[0];
     const bp={};rows.forEach(r=>{const p=r.m.patrol||"—";bp[p]=(bp[p]||0)+(Number(r.points)||0);});
     const tp=Object.entries(bp).sort((a,b)=>b[1]-a[1])[0];
     return`<div style="border:1px solid var(--line);border-radius:10px;padding:12px">
       <div style="font-weight:700;color:${s.color};margin-bottom:6px">${s.name}</div>
-      <div style="font-size:13px">⭐ Best scout: <b>${esc(ts&&ts.m?ts.m.name:"—")}</b> ${ts?`(${ts.points||0})`:""}</div>
-      <div style="font-size:13px;margin-top:4px">🏅 Best ${s.group.toLowerCase()}: <b>${esc(tp?tp[0]:"—")}</b> ${tp?`(${tp[1]})`:""}</div></div>`;
+      <div style="font-size:13px">⭐ Best ${s.indiv}: <b>${esc(ts&&ts.m?ts.m.name:"—")}</b> ${ts?`(${ts.points||0})`:""}</div>
+      <div style="font-size:13px;margin-top:4px">🏅 Best ${s.group}: <b>${esc(tp?tp[0]:"—")}</b> ${tp?`(${tp[1]})`:""}</div></div>`;
   }).join("");}
   $("#content").innerHTML=`
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:16px">
@@ -318,10 +321,21 @@ function confirmDel(m){const bg=document.createElement("div");bg.className="moda
 
 /* ========================== attendance/marks ========================= */
 let sDate=lastSunday(),sSec="Shaheen",sDraft={};
-function sessionRoster(){return state.members.filter(m=>m.memberType==="Scout"&&m.section===sSec&&m.status==="Active").sort((a,b)=>String(a.patrol).localeCompare(String(b.patrol))||String(a.name).localeCompare(String(b.name)));}
+function scoutRoster(){return state.members.filter(m=>m.memberType==="Scout"&&m.section===sSec&&m.status==="Active").sort((a,b)=>String(a.patrol).localeCompare(String(b.patrol))||String(a.name).localeCompare(String(b.name)));}
+function leaderRoster(){return state.members.filter(m=>m.memberType!=="Scout"&&m.section===sSec&&m.status==="Active").sort((a,b)=>String(a.name).localeCompare(String(b.name)));}
 function renderSessions(){
-  const roster=sessionRoster();const existing=state.sessions[sDate+"|"+sSec];
-  sDraft={};roster.forEach(m=>{const r=existing&&existing.records[m._k];sDraft[m._k]={present:r?r.present:true,points:r?r.points:""};});
+  const scouts=scoutRoster(),leaders=leaderRoster(),all=[...scouts,...leaders];
+  const existing=state.sessions[sDate+"|"+sSec];
+  sDraft={};all.forEach(m=>{const r=existing&&existing.records[m._k];sDraft[m._k]={present:r?r.present:true,points:r?r.points:""};});
+  const presBtn=m=>`<button class="btn pres" data-pk="${m._k}" ${canEdit?"":"disabled"} style="padding:5px 13px;font-size:13px"></button>`;
+  const scoutRow=m=>`<tr><td style="font-weight:600">${esc(m.name)}</td><td style="color:var(--sub)">${esc(m.patrol||"—")}</td>
+    <td>${presBtn(m)}</td><td><input class="input" type="number" data-mk="${m._k}" placeholder="0" style="width:80px;padding:6px 9px" value="${sDraft[m._k].points}" ${canEdit?"":"disabled"}/></td></tr>`;
+  const leaderRow=m=>`<tr><td style="font-weight:600">${esc(m.name)} <span class="pill" style="background:var(--soft);color:var(--amber)">${esc(m.role||m.memberType)}</span></td>
+    <td style="color:var(--sub)">${esc(m.memberType)}</td><td>${presBtn(m)}</td><td style="color:var(--sub)">—</td></tr>`;
+  const subhead=t=>`<tr><td colspan="4" style="background:var(--soft);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--sub)">${t}</td></tr>`;
+  let body="";
+  if(scouts.length)body+=subhead("Scouts")+scouts.map(scoutRow).join("");
+  if(leaders.length)body+=subhead("Leaders")+leaders.map(leaderRow).join("");
   $("#content").innerHTML=`
     ${canEdit?"":`<div class="banner">You're signed in as a Scout — this is view-only. Only leaders can record attendance and marks.</div>`}
     <div class="card row" style="align-items:flex-end;margin-bottom:14px">
@@ -329,13 +343,11 @@ function renderSessions(){
       <label><span class="lab">Section</span><select id="sS" class="input">${SECTIONS.map(s=>`<option ${sSec===s.name?"selected":""}>${s.name}</option>`).join("")}</select></label>
       <div style="flex:1"></div><div class="muted" id="sCount"></div>
       ${canEdit?`<button class="btn btn-primary" id="sSave">💾 Save session</button>`:""}</div>
-    ${roster.length?`<div class="tablewrap scrollx"><table><thead><tr>${["Scout","Patrol","Present","Marks"].map(h=>`<th>${h}</th>`).join("")}</tr></thead>
-      <tbody>${roster.map(m=>`<tr><td style="font-weight:600">${esc(m.name)}</td><td style="color:var(--sub)">${esc(m.patrol||"—")}</td>
-        <td><button class="btn pres" data-pk="${m._k}" ${canEdit?"":"disabled"} style="padding:5px 13px;font-size:13px"></button></td>
-        <td><input class="input" type="number" data-mk="${m._k}" placeholder="0" style="width:80px;padding:6px 9px" value="${sDraft[m._k].points}" ${canEdit?"":"disabled"}/></td></tr>`).join("")}</tbody></table></div>`
-      :`<div class="card" style="text-align:center;color:var(--sub);padding:40px">No active scouts in ${sSec}.</div>`}
-    <div class="muted" style="margin-top:10px">Weekly marks feed the best-scout & best-patrol leaderboard.</div>`;
-  const refresh=()=>{const p=Object.values(sDraft).filter(v=>v.present).length;$("#sCount").textContent=`${p}/${roster.length} present`+(existing?" · saved":"");};
+    ${all.length?`<div class="tablewrap scrollx"><table><thead><tr>${["Name","Patrol / Type","Present","Marks"].map(h=>`<th>${h}</th>`).join("")}</tr></thead>
+      <tbody>${body}</tbody></table></div>`
+      :`<div class="card" style="text-align:center;color:var(--sub);padding:40px">No active members in ${sSec}.</div>`}
+    <div class="muted" style="margin-top:10px">Scouts' marks feed the leaderboard. Leaders are tracked for attendance only.</div>`;
+  const refresh=()=>{const p=Object.values(sDraft).filter(v=>v.present).length;$("#sCount").textContent=`${p}/${all.length} present`+(existing?" · saved":"");};
   const paint=()=>{$("#content").querySelectorAll(".pres").forEach(b=>{const on=sDraft[b.dataset.pk].present;b.textContent=on?"Present":"Absent";b.style.background=on?"var(--activeBg)":"var(--offBg)";b.style.color=on?"var(--activeText)":"var(--offText)";b.style.border="none";});};
   $("#sD").onchange=e=>{sDate=e.target.value;renderSessions();};
   $("#sS").onchange=e=>{sSec=e.target.value;renderSessions();};
@@ -367,7 +379,7 @@ function renderBoard(){
       <label><span class="lab">To</span><input id="bT" class="input" type="date" value="${bTo}"/></label>
       <div class="muted" style="padding-bottom:9px">${sessions.length} session(s)</div></div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
-      <div class="tablewrap"><div style="padding:13px 16px;border-bottom:1px solid var(--line);font-weight:700">⭐ Best Scout</div><div style="padding:8px">${bestScouts.length?bestScouts.map((r,i)=>row(i,r.m.name,`${r.m.patrol||"—"} · present ${r.pres}/${r.held}`,r.pts)).join(""):empty}</div></div>
+      <div class="tablewrap"><div style="padding:13px 16px;border-bottom:1px solid var(--line);font-weight:700">⭐ Best ${sectionMeta(bSec).indiv}</div><div style="padding:8px">${bestScouts.length?bestScouts.map((r,i)=>row(i,r.m.name,`${r.m.patrol||"—"} · present ${r.pres}/${r.held}`,r.pts)).join(""):empty}</div></div>
       <div class="tablewrap"><div style="padding:13px 16px;border-bottom:1px solid var(--line);font-weight:700">🏅 Best ${sectionMeta(bSec).group}</div><div style="padding:8px">${bestPatrols.some(p=>p.count)?bestPatrols.map((p,i)=>row(i,p.name,`${p.count} scout(s)`,p.pts)).join(""):empty}</div></div></div>`;
   $("#bS").onchange=e=>{bSec=e.target.value;renderBoard();};
   $("#bF").onchange=e=>{bFrom=e.target.value;renderBoard();};
@@ -411,6 +423,67 @@ function renderSettings(){
   $("#saveDetails").onclick=async()=>{state.institution=$("#setInst").value;state.association=$("#setAssoc").value;await saveConfig();toast("Saved");renderApp();};
   $("#expCSV").onclick=()=>{const cols=["id","name","memberType","role","section","patrol","email","contact","dob","joinDate","status"];const e=v=>`"${String(v==null?"":v).replace(/"/g,'""')}"`;const rows=[cols.join(","),...state.members.map(m=>cols.map(c=>e(m[c])).join(","))];download(rows.join("\n"),"ksg_members.csv","text/csv");};
   $("#expJSON").onclick=()=>download(JSON.stringify(state,null,2),"ksg_backup.json","application/json");
+}
+
+/* =========================== sunday planner ========================== */
+let pDate=nextSunday();
+function plannerItems(){const d=state.activities[pDate];return d&&d.items?d.items:[];}
+function renderPlanner(){
+  const items=[...plannerItems()].sort((a,b)=>String(a.time).localeCompare(String(b.time)));
+  const upcoming=[...new Set(Object.values(state.activities).map(a=>a.date))].filter(Boolean).sort();
+  const secColor=s=>s&&s!=="All"?sectionMeta(s).color:"var(--sub)";
+  $("#content").innerHTML=`
+    ${canEdit?"":`<div class="banner">View-only — only leaders can edit the plan.</div>`}
+    <div class="card row" style="align-items:flex-end;margin-bottom:14px">
+      <label><span class="lab">Sunday date</span><input id="pD" class="input" type="date" value="${pDate}"/></label>
+      <div style="flex:1"></div>
+      ${canEdit?`<button class="btn btn-primary" id="pAdd">＋ Add activity</button>`:""}</div>
+    ${items.length?`<div class="grid" style="gap:10px">${items.map(it=>`
+      <div class="card" style="border-left:3px solid ${secColor(it.section)}">
+        <div class="row" style="justify-content:space-between;align-items:flex-start">
+          <div style="min-width:0">
+            <div class="row" style="gap:8px">
+              ${it.time?`<span class="mono" style="font-weight:700">${esc(it.time)}</span>`:""}
+              <span style="font-weight:700">${esc(it.title)}</span>
+              ${it.section&&it.section!=="All"?`<span class="pill" style="background:var(--soft);color:${secColor(it.section)}">${esc(it.section)}</span>`:`<span class="pill" style="background:var(--soft);color:var(--sub)">All sections</span>`}
+            </div>
+            ${it.detail?`<div class="muted" style="margin-top:6px;font-size:13px;color:var(--ink)">${esc(it.detail)}</div>`:""}
+            ${it.lead?`<div class="muted" style="margin-top:4px">In charge: ${esc(it.lead)}</div>`:""}
+          </div>
+          ${canEdit?`<div style="white-space:nowrap"><button class="icon-btn" data-pe="${it.id}">✏️</button><button class="icon-btn" data-pd="${it.id}">🗑️</button></div>`:""}
+        </div></div>`).join("")}</div>`
+      :`<div class="card" style="text-align:center;color:var(--sub);padding:36px">No activities planned for ${fmtDate(pDate)} yet.${canEdit?" Click “Add activity”.":""}</div>`}
+    ${upcoming.length?`<div class="muted" style="margin-top:14px">Other planned Sundays: ${upcoming.map(d=>`<a href="#" data-jump="${d}">${fmtDate(d)}</a>`).join(" · ")}</div>`:""}`;
+  $("#pD").onchange=e=>{pDate=e.target.value;renderPlanner();};
+  $("#content").querySelectorAll("[data-jump]").forEach(a=>a.onclick=e=>{e.preventDefault();pDate=a.dataset.jump;renderPlanner();});
+  if(canEdit){
+    if($("#pAdd"))$("#pAdd").onclick=()=>openActivity(null);
+    $("#content").querySelectorAll("[data-pe]").forEach(b=>b.onclick=()=>openActivity(plannerItems().find(x=>x.id==b.dataset.pe)));
+    $("#content").querySelectorAll("[data-pd]").forEach(b=>b.onclick=async()=>{const d=state.activities[pDate];d.items=d.items.filter(x=>x.id!=b.dataset.pd);if(!d.items.length)delete state.activities[pDate];await saveActivities();renderPlanner();toast("Removed");});
+  }
+}
+function openActivity(it){
+  const isEdit=!!it;const f=it?{...it}:{id:uid(),time:"",title:"",detail:"",lead:"",section:"All"};
+  const bg=document.createElement("div");bg.className="modal-bg";
+  bg.innerHTML=`<div class="modal" style="max-width:480px">
+    <div class="row" style="justify-content:space-between"><h2>${isEdit?"Edit activity":"Add activity"}</h2><button class="icon-btn" id="ax">✕</button></div>
+    <div class="grid" style="gap:13px;margin-top:14px">
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:13px">
+        <label><span class="lab">Time</span><input class="input" id="aTime" type="time" value="${esc(f.time)}"/></label>
+        <label><span class="lab">Section</span><select class="input" id="aSec"><option ${f.section==="All"?"selected":""}>All</option>${SECTIONS.map(s=>`<option ${f.section===s.name?"selected":""}>${s.name}</option>`).join("")}</select></label></div>
+      <label><span class="lab">Activity *</span><input class="input" id="aTitle" value="${esc(f.title)}" placeholder="e.g. Knot-tying relay"/></label>
+      <label><span class="lab">Details</span><textarea class="input" id="aDetail" style="min-height:60px;resize:vertical">${esc(f.detail)}</textarea></label>
+      <label><span class="lab">In charge (leader)</span><input class="input" id="aLead" value="${esc(f.lead)}"/></label></div>
+    <div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn" id="ac">Cancel</button><button class="btn btn-primary" id="as">💾 Save</button></div></div>`;
+  document.body.appendChild(bg);bg.onclick=e=>{if(e.target===bg)bg.remove();};
+  bg.querySelector("#ax").onclick=()=>bg.remove();bg.querySelector("#ac").onclick=()=>bg.remove();
+  bg.querySelector("#as").onclick=async()=>{
+    const v={id:f.id,time:bg.querySelector("#aTime").value,title:bg.querySelector("#aTitle").value.trim(),detail:bg.querySelector("#aDetail").value,lead:bg.querySelector("#aLead").value,section:bg.querySelector("#aSec").value};
+    if(!v.title)return toast("Activity name is required");
+    const d=state.activities[pDate]||{date:pDate,items:[]};
+    d.items=isEdit?d.items.map(x=>x.id===v.id?v:x):[...d.items,v];
+    state.activities[pDate]=d;await saveActivities();bg.remove();renderPlanner();toast("Saved");
+  };
 }
 
 /* ============================== boot ================================= */
