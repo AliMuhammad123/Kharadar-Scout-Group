@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kharadar Scout Group Institute</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#eceef1;--panel:#fff;--ink:#15212e;--sub:#5b6b7b;--line:#dde3e9;--soft:#f4f6f8;
+    --primary:#0d6e63;--primaryDark:#0a574e;--amber:#b45309;--gold:#caa23a;
+    --activeBg:#e7f3f0;--activeText:#0a574e;--offBg:#f0f1f3;--offText:#6b7785;
+    --danger:#b42318;--dangerBg:#fdecea;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1120px;margin:0 auto;padding:18px 16px 80px}
+  h1{font-size:21px;margin:0;line-height:1.1}h2{font-size:18px;margin:0}h3{font-size:16px;margin:0 0 14px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;color:var(--ink);background:#fff;outline:none;font-family:inherit}
+  .input:focus{border-color:var(--primary)} .input:disabled{background:var(--soft);color:var(--sub)}
+  select.input{cursor:pointer}
+  .lab{font-size:12px;font-weight:600;color:var(--sub);display:block;margin-bottom:5px}
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--ink);font-family:inherit}
+  .btn-primary{background:var(--primary);color:#fff;border:none}.btn-danger{background:var(--danger);color:#fff;border:none}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .pill{border-radius:20px;padding:2px 10px;font-size:12.5px;font-weight:600;white-space:nowrap;display:inline-block}
+  .tabbar{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:16px 0 20px;overflow-x:auto}
+  .tab{display:flex;align-items:center;gap:7px;background:none;border:none;border-bottom:2px solid transparent;color:var(--sub);padding:10px 14px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit}
+  .tab.on{color:var(--primary);border-bottom-color:var(--primary)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{background:var(--soft);color:var(--sub);text-align:left;padding:11px 13px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
+  td{padding:10px 13px;border-top:1px solid var(--line)}
+  .tablewrap{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .scrollx{overflow-x:auto}
+  .icon-btn{background:none;border:none;cursor:pointer;padding:6px;font-size:15px;line-height:1}
+  .grid{display:grid;gap:12px}
+  .modal-bg{position:fixed;inset:0;background:rgba(20,33,46,.45);display:grid;place-items:center;padding:16px;z-index:60}
+  .modal{background:#fff;border-radius:14px;width:100%;max-height:90vh;overflow-y:auto;padding:22px}
+  .muted{color:var(--sub);font-size:12.5px}
+  .stat-h{display:flex;align-items:center;gap:8px;color:var(--sub);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .stat-v{font-size:26px;font-weight:700;margin-top:4px}
+  .badge-row{display:flex;gap:6px;margin-bottom:6px}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:10px;font-size:14px;z-index:90}
+  .tagwrap{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+  .tag{background:var(--soft);border:1px solid var(--line);border-radius:20px;padding:3px 8px 3px 11px;font-size:13px;display:inline-flex;align-items:center;gap:5px}
+  .lead{width:42px;height:42px;border-radius:11px;background:var(--primary);display:grid;place-items:center;color:#fff;font-size:22px;flex-shrink:0}
+  .rank-no{width:26px;height:26px;border-radius:50%;color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px;flex-shrink:0}
+  .banner{background:#fff7e6;border:1px solid #f0d59a;color:#7a5b12;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:14px}
+  .authwrap{min-height:100vh;display:grid;place-items:center;padding:20px}
+</style>
+</head>
+<body>
+<div id="app"><div class="wrap"><p class="muted">Loading…</p></div></div>
+<script>
+/* ============================================================
+   STEP 1 — paste your Supabase project values here (Settings → API)
+   ============================================================ */
+const SUPABASE_URL  = "PASTE_YOUR_PROJECT_URL_HERE";       // e.g. https://abcd1234.supabase.co
+const SUPABASE_ANON = "PASTE_YOUR_ANON_PUBLIC_KEY_HERE";   // the long "anon public" key
+/* ============================================================ */
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+/* ----------------------------- model ---------------------------------- */
+const SECTIONS=[
+  {name:"Shaheen",min:7,max:11,group:"Parwaz",color:"#0d6e63"},
+  {name:"Boy Scout",min:12,max:17,group:"Patrol",color:"#2563a6"},
+  {name:"Rover",min:17,max:25,group:"Patrol",color:"#8a4fb0"},
+];
+const MEMBER_TYPES=["Scout","Leader","Senior Leader"];
+const LEADER_ROLES=["GSL","Section Leader","Finance Member","Secretary","Assistant Leader"];
+const sectionMeta=n=>SECTIONS.find(s=>s.name===n)||{color:"#5b6b7b",group:"Group"};
+
+let state={institution:"",association:"",patrols:{},rankBadges:{},proficiencyBadges:[],members:[],sessions:{}};
+let currentUser=null,currentRole="scout",canEdit=false,tab="dash";
+
+/* ----------------------------- helpers -------------------------------- */
+const $=s=>document.querySelector(s);
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function ageFrom(dob){if(!dob)return null;const d=new Date(dob);if(isNaN(d))return null;const t=new Date();let a=t.getFullYear()-d.getFullYear();const m=t.getMonth()-d.getMonth();if(m<0||(m===0&&t.getDate()<d.getDate()))a--;return a;}
+function lastSunday(){const t=new Date();const s=new Date(t);s.setDate(t.getDate()-t.getDay());return s.toISOString().slice(0,10);}
+function fmtDate(s){return s?new Date(s).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—";}
+function nextId(){let m=0;state.members.forEach(x=>{const n=parseInt(String(x.id).replace(/\D/g,""),10);if(!isNaN(n)&&n>m)m=n;});return"KSG-"+String(m+1).padStart(4,"0");}
+function uid(){return Date.now()+"."+Math.floor(Math.random()*1e6);}
+function toast(t){let e=document.createElement("div");e.className="toast";e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),2200);}
+function download(text,name,type){const b=new Blob([text],{type});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
+
+/* ----------------------------- data i/o ------------------------------- */
+async function loadAll(){
+  const {data,error}=await sb.from("registry").select("key,value");
+  if(error){toast("Load error: "+error.message);return;}
+  const map={};(data||[]).forEach(r=>map[r.key]=r.value);
+  const c=map.config||{};
+  state={
+    institution:c.institution||"Kharadar Scout Group Institute",
+    association:c.association||"Ismaili District Boy Scout Association",
+    patrols:c.patrols||{Shaheen:[],"Boy Scout":[],Rover:[]},
+    rankBadges:c.rankBadges||{Shaheen:[],"Boy Scout":[],Rover:[]},
+    proficiencyBadges:c.proficiencyBadges||[],
+    members:map.members||[],
+    sessions:map.sessions||{},
+  };
+}
+async function saveMembers(){const{error}=await sb.from("registry").upsert({key:"members",value:state.members});if(error)toast("Save failed: "+error.message);}
+async function saveSessions(){const{error}=await sb.from("registry").upsert({key:"sessions",value:state.sessions});if(error)toast("Save failed: "+error.message);}
+async function saveConfig(){const cfg={institution:state.institution,association:state.association,patrols:state.patrols,rankBadges:state.rankBadges,proficiencyBadges:state.proficiencyBadges};const{error}=await sb.from("registry").upsert({key:"config",value:cfg});if(error)toast("Save failed: "+error.message);}
+
+/* ============================== auth =================================== */
+async function boot(){
+  if(SUPABASE_URL.includes("PASTE_")){$("#app").innerHTML=`<div class="wrap"><div class="card"><h3>Almost there</h3><p>Open this file and paste your Supabase <b>Project URL</b> and <b>anon key</b> near the top of the script (Step 1), then reload.</p></div></div>`;return;}
+  const {data:{session}}=await sb.auth.getSession();
+  if(session&&session.user){currentUser=session.user;await afterLogin();}else renderAuth();
+}
+function renderAuth(mode){
+  mode=mode||"login";
+  $("#app").innerHTML=`<div class="authwrap"><div class="card" style="width:340px">
+    <div class="lead" style="margin:0 auto 14px">🛡️</div>
+    <h2 style="text-align:center">Kharadar Scout Group</h2>
+    <p class="muted" style="text-align:center;margin:6px 0 16px">${mode==="login"?"Log in to continue.":"Create your account."}</p>
+    <div class="grid" style="gap:10px">
+      ${mode==="signup"?`<label><span class="lab">Full name</span><input id="aName" class="input"/></label>`:""}
+      <label><span class="lab">Email</span><input id="aEmail" class="input" type="email"/></label>
+      <label><span class="lab">Password</span><input id="aPass" class="input" type="password"/></label>
+      <button class="btn btn-primary" id="aGo" style="justify-content:center">${mode==="login"?"Log in":"Sign up"}</button>
+      <div class="muted" style="text-align:center">
+        ${mode==="login"?`No account? <a href="#" id="toSignup">Sign up</a>`:`Have an account? <a href="#" id="toLogin">Log in</a>`}
+      </div>
+    </div></div></div>`;
+  if($("#toSignup"))$("#toSignup").onclick=e=>{e.preventDefault();renderAuth("signup");};
+  if($("#toLogin"))$("#toLogin").onclick=e=>{e.preventDefault();renderAuth("login");};
+  $("#aGo").onclick=async()=>{
+    const email=$("#aEmail").value.trim(),pass=$("#aPass").value;
+    if(!email||!pass)return toast("Email and password required");
+    $("#aGo").disabled=true;
+    if(mode==="signup"){
+      const name=$("#aName").value.trim();
+      const{data,error}=await sb.auth.signUp({email,password:pass,options:{data:{full_name:name}}});
+      $("#aGo").disabled=false;
+      if(error)return toast(error.message);
+      if(data.session){currentUser=data.session.user;await afterLogin();}
+      else toast("Account created. If email confirmation is on, confirm then log in.");
+    }else{
+      const{data,error}=await sb.auth.signInWithPassword({email,password:pass});
+      $("#aGo").disabled=false;
+      if(error)return toast(error.message);
+      currentUser=data.user;await afterLogin();
+    }
+  };
+}
+async function afterLogin(){
+  const{data:prof}=await sb.from("profiles").select("role,full_name").eq("id",currentUser.id).single();
+  currentRole=(prof&&prof.role)||"scout";canEdit=currentRole==="leader";
+  currentUser.full_name=(prof&&prof.full_name)||"";
+  await loadAll();tab="dash";renderApp();
+}
+async function logout(){await sb.auth.signOut();currentUser=null;renderAuth();}
+
+/* ============================== shell ================================= */
+function renderApp(){
+  const tabs=[["dash","🏕️ Dashboard"],["members","👥 Members"],["sessions","✅ Attendance & Marks"],["board","🏆 Leaderboard"]];
+  if(canEdit)tabs.push(["settings","⚙️ Settings"]);
+  $("#app").innerHTML=`<div class="wrap">
+    <div class="row" style="justify-content:space-between;margin-bottom:6px">
+      <div class="row" style="gap:12px"><div class="lead">🛡️</div>
+        <div><h1>${esc(state.institution)}</h1><div class="muted">${esc(state.association)}</div></div></div>
+      <div class="row" style="gap:8px">
+        <span class="pill" style="background:${canEdit?"var(--activeBg)":"var(--offBg)"};color:${canEdit?"var(--activeText)":"var(--offText)"}">${canEdit?"Leader":"Scout · view only"}</span>
+        <button class="btn" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+    <div class="tabbar" id="tabbar">${tabs.map(([id,l])=>`<button class="tab ${tab===id?"on":""}" data-tab="${id}">${l}</button>`).join("")}</div>
+    <div id="content"></div></div>`;
+  $("#logoutBtn").onclick=logout;
+  $("#tabbar").querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;renderApp();});
+  ({dash:renderDash,members:renderMembers,sessions:renderSessions,board:renderBoard,settings:renderSettings}[tab]||renderDash)();
+}
+
+/* ============================== dashboard ============================= */
+function renderDash(){
+  const scouts=state.members.filter(m=>m.memberType==="Scout");
+  const leaders=state.members.filter(m=>m.memberType!=="Scout");
+  const dates=[...new Set(Object.values(state.sessions).map(s=>s.date))].sort();
+  const latest=dates[dates.length-1];
+  const stat=(l,v,c)=>`<div class="card"><div class="stat-h"><span style="color:${c||"var(--primary)"}">●</span>${l}</div><div class="stat-v">${v}</div></div>`;
+  let winners="";
+  if(latest){winners=SECTIONS.map(s=>{
+    const sess=state.sessions[latest+"|"+s.name];if(!sess)return"";
+    const rows=Object.entries(sess.records).map(([k,v])=>({m:state.members.find(x=>x._k==k),...v})).filter(r=>r.m);
+    const ts=[...rows].sort((a,b)=>(b.points||0)-(a.points||0))[0];
+    const bp={};rows.forEach(r=>{const p=r.m.patrol||"—";bp[p]=(bp[p]||0)+(Number(r.points)||0);});
+    const tp=Object.entries(bp).sort((a,b)=>b[1]-a[1])[0];
+    return`<div style="border:1px solid var(--line);border-radius:10px;padding:12px">
+      <div style="font-weight:700;color:${s.color};margin-bottom:6px">${s.name}</div>
+      <div style="font-size:13px">⭐ Best scout: <b>${esc(ts&&ts.m?ts.m.name:"—")}</b> ${ts?`(${ts.points||0})`:""}</div>
+      <div style="font-size:13px;margin-top:4px">🏅 Best ${s.group.toLowerCase()}: <b>${esc(tp?tp[0]:"—")}</b> ${tp?`(${tp[1]})`:""}</div></div>`;
+  }).join("");}
+  $("#content").innerHTML=`
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:16px">
+      ${stat("Total members",state.members.length)}${stat("Scouts",scouts.length,"var(--primary)")}
+      ${stat("Leaders",leaders.length,"var(--amber)")}${stat("Sessions held",Object.keys(state.sessions).length,"var(--sub)")}</div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-bottom:16px">
+      ${SECTIONS.map(s=>{const n=scouts.filter(m=>m.section===s.name).length;return`
+        <div class="card" style="border-top:3px solid ${s.color}">
+          <div class="row" style="justify-content:space-between">
+            <div><div style="font-weight:700;font-size:16px">${s.name}</div><div class="muted">Age ${s.min}–${s.max} · ${s.group}s</div></div>
+            <div style="font-size:28px;font-weight:700;color:${s.color}">${n}</div></div>
+          <div class="muted" style="margin-top:8px">${(state.patrols[s.name]||[]).length} ${s.group.toLowerCase()}s</div></div>`;}).join("")}</div>
+    <div class="card"><div style="font-weight:700;margin-bottom:10px">🏆 Latest Sunday — ${latest?fmtDate(latest):"no sessions yet"}</div>
+      ${latest?`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">${winners}</div>`:`<div class="muted">No sessions recorded yet.</div>`}</div>`;
+}
+
+/* =============================== members ============================== */
+let mSearch="",mFSec="All",mFType="All";
+function filteredMembers(){const q=mSearch.trim().toLowerCase();
+  return state.members.filter(m=>mFSec==="All"||m.section===mFSec).filter(m=>mFType==="All"||m.memberType===mFType)
+    .filter(m=>!q||[m.name,m.id,m.email,m.contact,m.patrol].some(v=>String(v||"").toLowerCase().includes(q)))
+    .sort((a,b)=>String(a.name).localeCompare(String(b.name)));}
+function membersRows(){const list=filteredMembers();
+  if(!list.length)return`<tr><td colspan="8" style="text-align:center;color:var(--sub);padding:40px">${state.members.length?"No matches.":"No members yet."}</td></tr>`;
+  return list.map(m=>{const age=m.dob?ageFrom(m.dob):m.manualAge;const meta=sectionMeta(m.section);
+    return`<tr>
+      <td class="mono" style="font-size:12.5px;color:var(--primaryDark)">${esc(m.id)}</td>
+      <td style="font-weight:600">${esc(m.name)}${m.memberType!=="Scout"?` <span class="pill" style="background:var(--soft);color:var(--amber)">${esc(m.memberType)}</span>`:""}</td>
+      <td><span style="color:${meta.color};font-weight:600">${esc(m.section)}</span></td>
+      <td style="color:var(--sub)">${esc(m.memberType==="Scout"?(m.patrol||"—"):(m.role||"—"))}</td>
+      <td style="color:var(--sub)">${age==null?"—":age}</td>
+      <td style="color:var(--sub);white-space:nowrap">🏅 ${(m.rankBadges||[]).length} &nbsp; 🎖️ ${(m.proficiencyBadges||[]).length}</td>
+      <td><span class="pill" style="background:${m.status==="Active"?"var(--activeBg)":"var(--offBg)"};color:${m.status==="Active"?"var(--activeText)":"var(--offText)"}">${esc(m.status)}</span></td>
+      <td style="text-align:right;white-space:nowrap">${canEdit?`<button class="icon-btn" data-edit="${m._k}">✏️</button><button class="icon-btn" data-del="${m._k}">🗑️</button>`:""}</td></tr>`;}).join("");}
+function renderMembers(){
+  $("#content").innerHTML=`
+    <div class="row" style="margin-bottom:14px">
+      <input id="mSearch" class="input" style="flex:1;min-width:200px" placeholder="Search name, ID, contact, patrol…" value="${esc(mSearch)}"/>
+      <select id="mFSec" class="input" style="width:auto"><option>All</option>${SECTIONS.map(s=>`<option ${mFSec===s.name?"selected":""}>${s.name}</option>`).join("")}</select>
+      <select id="mFType" class="input" style="width:auto"><option>All</option>${MEMBER_TYPES.map(t=>`<option ${mFType===t?"selected":""}>${t}</option>`).join("")}</select>
+      ${canEdit?`<button class="btn btn-primary" id="addM">＋ Add</button>`:""}
+    </div>
+    <div class="tablewrap scrollx"><table><thead><tr>${["ID","Name","Section","Patrol / Role","Age","Badges","Status",""].map(h=>`<th>${h}</th>`).join("")}</tr></thead>
+    <tbody id="mBody">${membersRows()}</tbody></table></div>`;
+  $("#mSearch").oninput=e=>{mSearch=e.target.value;$("#mBody").innerHTML=membersRows();wireRows();};
+  $("#mFSec").onchange=e=>{mFSec=e.target.value;$("#mBody").innerHTML=membersRows();wireRows();};
+  $("#mFType").onchange=e=>{mFType=e.target.value;$("#mBody").innerHTML=membersRows();wireRows();};
+  if($("#addM"))$("#addM").onclick=()=>openMember(null);
+  wireRows();
+}
+function wireRows(){if(!canEdit)return;
+  $("#mBody").querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openMember(state.members.find(m=>m._k==b.dataset.edit)));
+  $("#mBody").querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>confirmDel(state.members.find(m=>m._k==b.dataset.del)));}
+
+let mform=null;
+function blankMember(){return{_k:uid(),id:nextId(),name:"",email:"",contact:"",memberType:"Scout",role:"",section:"Shaheen",patrol:"",dob:"",manualAge:"",joinDate:new Date().toISOString().slice(0,10),status:"Active",rankBadges:[],proficiencyBadges:[],notes:""};}
+function openMember(m){mform=m?JSON.parse(JSON.stringify(m)):blankMember();drawMemberModal(!!m);}
+function drawMemberModal(isEdit){
+  const f=mform,isScout=f.memberType==="Scout",patrols=state.patrols[f.section]||[],rankCat=state.rankBadges[f.section]||[];
+  const badgeBlock=(field,cat,label)=>`<div>
+    <div class="row" style="justify-content:space-between;margin-bottom:6px"><span style="font-size:12px;font-weight:700;color:var(--sub)">${label}</span>
+    <button class="btn" data-addbadge="${field}" style="padding:4px 10px;font-size:12.5px">＋ Add</button></div>
+    ${cat.length?`<datalist id="dl_${field}">${cat.map(b=>`<option value="${esc(b)}">`).join("")}</datalist>`:""}
+    <div id="bl_${field}">${badgeRows(field)}</div></div>`;
+  const bg=document.createElement("div");bg.className="modal-bg";
+  bg.innerHTML=`<div class="modal" style="max-width:600px">
+    <div class="row" style="justify-content:space-between"><h2>${isEdit?"Edit member":"Add member"}</h2><button class="icon-btn" id="mx">✕</button></div>
+    <div class="grid" style="gap:13px;margin-top:14px">
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:13px">
+        <label><span class="lab">Member ID</span><input class="input mono" data-f="id" value="${esc(f.id)}"/></label>
+        <label><span class="lab">Status</span><select class="input" data-f="status"><option ${f.status==="Active"?"selected":""}>Active</option><option ${f.status==="Inactive"?"selected":""}>Inactive</option></select></label></div>
+      <label><span class="lab">Full name *</span><input class="input" data-f="name" value="${esc(f.name)}"/></label>
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:13px">
+        <label><span class="lab">Email</span><input class="input" data-f="email" value="${esc(f.email)}"/></label>
+        <label><span class="lab">Contact</span><input class="input" data-f="contact" value="${esc(f.contact)}"/></label></div>
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:13px">
+        <label><span class="lab">Member type</span><select class="input" data-f="memberType">${MEMBER_TYPES.map(t=>`<option ${f.memberType===t?"selected":""}>${t}</option>`).join("")}</select></label>
+        <label><span class="lab">Section</span><select class="input" data-f="section">${SECTIONS.map(s=>`<option ${f.section===s.name?"selected":""}>${s.name}</option>`).join("")}</select></label></div>
+      ${isScout?`<label><span class="lab">${sectionMeta(f.section).group} (patrol)</span><select class="input" data-f="patrol"><option value="">— select —</option>${patrols.map(p=>`<option ${f.patrol===p?"selected":""}>${esc(p)}</option>`).join("")}</select></label>`
+        :`<label><span class="lab">Leadership role</span><select class="input" data-f="role"><option value="">— select —</option>${LEADER_ROLES.map(r=>`<option ${f.role===r?"selected":""}>${r}</option>`).join("")}</select></label>`}
+      <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:13px">
+        <label><span class="lab">Date of birth</span><input class="input" type="date" data-f="dob" value="${esc(f.dob)}"/></label>
+        <label><span class="lab">Age (if no DOB)</span><input class="input" data-f="manualAge" value="${f.dob?(ageFrom(f.dob)??""):esc(f.manualAge)}" ${f.dob?"disabled":""} placeholder="auto"/></label>
+        <label><span class="lab">Joined scouting</span><input class="input" type="date" data-f="joinDate" value="${esc(f.joinDate)}"/></label></div>
+      <div style="border-top:1px solid var(--line);padding-top:12px" class="grid">
+        ${badgeBlock("rankBadges",rankCat,"RANK BADGES PASSED")}
+        ${badgeBlock("proficiencyBadges",state.proficiencyBadges,"PROFICIENCY BADGES PASSED")}</div>
+      <label><span class="lab">Notes</span><textarea class="input" data-f="notes" style="min-height:56px;resize:vertical">${esc(f.notes)}</textarea></label></div>
+    <div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn" id="mc">Cancel</button><button class="btn btn-primary" id="ms">💾 ${isEdit?"Save changes":"Add member"}</button></div></div>`;
+  document.body.appendChild(bg);
+  bg.onclick=e=>{if(e.target===bg)bg.remove();};
+  bg.querySelector("#mx").onclick=()=>bg.remove();bg.querySelector("#mc").onclick=()=>bg.remove();
+  bg.querySelectorAll("[data-f]").forEach(el=>{el.oninput=()=>{mform[el.dataset.f]=el.value;};
+    if(el.tagName==="SELECT")el.onchange=()=>{mform[el.dataset.f]=el.value;if(["memberType","section"].includes(el.dataset.f)){bg.remove();drawMemberModal(isEdit);}};});
+  bindBadges(bg,isEdit);
+  bg.querySelector("#ms").onclick=async()=>{
+    if(!mform.name.trim())return toast("Name is required");
+    const exists=state.members.some(m=>m._k===mform._k);
+    state.members=exists?state.members.map(m=>m._k===mform._k?mform:m):[...state.members,mform];
+    await saveMembers();bg.remove();renderMembers();toast(exists?"Member updated":"Member added");};
+}
+function badgeRows(field){const arr=mform[field]||[];const dl=document.getElementById("dl_"+field)?"dl_"+field:"";
+  if(!arr.length)return`<div class="muted" style="padding:4px 0 8px">None recorded.</div>`;
+  return arr.map((b,i)=>`<div class="badge-row">
+    <input class="input" ${dl?`list="${dl}"`:""} data-bn="${field}:${i}" value="${esc(b.name)}" placeholder="Badge name" style="flex:2"/>
+    <input class="input" type="date" data-bd="${field}:${i}" value="${esc(b.date)}" style="flex:1"/>
+    <button class="icon-btn" data-brm="${field}:${i}" style="border:1px solid var(--line);border-radius:8px;color:var(--danger)">✕</button></div>`).join("");}
+function bindBadges(bg,isEdit){
+  bg.querySelectorAll("[data-addbadge]").forEach(b=>b.onclick=()=>{const f=b.dataset.addbadge;(mform[f]=mform[f]||[]).push({name:"",date:""});bg.querySelector("#bl_"+f).innerHTML=badgeRows(f);bindBadges(bg,isEdit);});
+  bg.querySelectorAll("[data-bn]").forEach(el=>el.oninput=()=>{const[f,i]=el.dataset.bn.split(":");mform[f][i].name=el.value;});
+  bg.querySelectorAll("[data-bd]").forEach(el=>el.oninput=()=>{const[f,i]=el.dataset.bd.split(":");mform[f][i].date=el.value;});
+  bg.querySelectorAll("[data-brm]").forEach(b=>b.onclick=()=>{const[f,i]=b.dataset.brm.split(":");mform[f].splice(+i,1);bg.querySelector("#bl_"+f).innerHTML=badgeRows(f);bindBadges(bg,isEdit);});}
+function confirmDel(m){const bg=document.createElement("div");bg.className="modal-bg";
+  bg.innerHTML=`<div class="modal" style="max-width:380px;text-align:center"><div style="font-size:26px;margin-bottom:8px">🗑️</div>
+    <h3>Remove ${esc(m.name)}?</h3><p class="muted" style="margin:0 0 18px">This permanently deletes the record.</p>
+    <div class="row" style="justify-content:center"><button class="btn" id="k">Keep</button><button class="btn btn-danger" id="d">Delete</button></div></div>`;
+  document.body.appendChild(bg);bg.onclick=e=>{if(e.target===bg)bg.remove();};
+  bg.querySelector("#k").onclick=()=>bg.remove();
+  bg.querySelector("#d").onclick=async()=>{state.members=state.members.filter(x=>x._k!==m._k);await saveMembers();bg.remove();renderMembers();toast("Member removed");};}
+
+/* ========================== attendance/marks ========================= */
+let sDate=lastSunday(),sSec="Shaheen",sDraft={};
+function sessionRoster(){return state.members.filter(m=>m.memberType==="Scout"&&m.section===sSec&&m.status==="Active").sort((a,b)=>String(a.patrol).localeCompare(String(b.patrol))||String(a.name).localeCompare(String(b.name)));}
+function renderSessions(){
+  const roster=sessionRoster();const existing=state.sessions[sDate+"|"+sSec];
+  sDraft={};roster.forEach(m=>{const r=existing&&existing.records[m._k];sDraft[m._k]={present:r?r.present:true,points:r?r.points:""};});
+  $("#content").innerHTML=`
+    ${canEdit?"":`<div class="banner">You're signed in as a Scout — this is view-only. Only leaders can record attendance and marks.</div>`}
+    <div class="card row" style="align-items:flex-end;margin-bottom:14px">
+      <label><span class="lab">Sunday date</span><input id="sD" class="input" type="date" value="${sDate}"/></label>
+      <label><span class="lab">Section</span><select id="sS" class="input">${SECTIONS.map(s=>`<option ${sSec===s.name?"selected":""}>${s.name}</option>`).join("")}</select></label>
+      <div style="flex:1"></div><div class="muted" id="sCount"></div>
+      ${canEdit?`<button class="btn btn-primary" id="sSave">💾 Save session</button>`:""}</div>
+    ${roster.length?`<div class="tablewrap scrollx"><table><thead><tr>${["Scout","Patrol","Present","Marks"].map(h=>`<th>${h}</th>`).join("")}</tr></thead>
+      <tbody>${roster.map(m=>`<tr><td style="font-weight:600">${esc(m.name)}</td><td style="color:var(--sub)">${esc(m.patrol||"—")}</td>
+        <td><button class="btn pres" data-pk="${m._k}" ${canEdit?"":"disabled"} style="padding:5px 13px;font-size:13px"></button></td>
+        <td><input class="input" type="number" data-mk="${m._k}" placeholder="0" style="width:80px;padding:6px 9px" value="${sDraft[m._k].points}" ${canEdit?"":"disabled"}/></td></tr>`).join("")}</tbody></table></div>`
+      :`<div class="card" style="text-align:center;color:var(--sub);padding:40px">No active scouts in ${sSec}.</div>`}
+    <div class="muted" style="margin-top:10px">Weekly marks feed the best-scout & best-patrol leaderboard.</div>`;
+  const refresh=()=>{const p=Object.values(sDraft).filter(v=>v.present).length;$("#sCount").textContent=`${p}/${roster.length} present`+(existing?" · saved":"");};
+  const paint=()=>{$("#content").querySelectorAll(".pres").forEach(b=>{const on=sDraft[b.dataset.pk].present;b.textContent=on?"Present":"Absent";b.style.background=on?"var(--activeBg)":"var(--offBg)";b.style.color=on?"var(--activeText)":"var(--offText)";b.style.border="none";});};
+  $("#sD").onchange=e=>{sDate=e.target.value;renderSessions();};
+  $("#sS").onchange=e=>{sSec=e.target.value;renderSessions();};
+  if(canEdit){
+    $("#content").querySelectorAll(".pres").forEach(b=>b.onclick=()=>{sDraft[b.dataset.pk].present=!sDraft[b.dataset.pk].present;paint();refresh();});
+    $("#content").querySelectorAll("[data-mk]").forEach(i=>i.oninput=()=>{sDraft[i.dataset.mk].points=i.value;});
+    $("#sSave").onclick=async()=>{const records={};Object.entries(sDraft).forEach(([k,v])=>{records[k]={present:!!v.present,points:Number(v.points)||0};});state.sessions[sDate+"|"+sSec]={date:sDate,section:sSec,records};await saveSessions();toast("Session saved");renderSessions();};
+  }
+  paint();refresh();
+}
+
+/* ============================ leaderboard ============================ */
+let bSec="Shaheen",bFrom="",bTo="";
+function renderBoard(){
+  const sessions=Object.values(state.sessions).filter(s=>s.section===bSec).filter(s=>(!bFrom||s.date>=bFrom)&&(!bTo||s.date<=bTo));
+  const scouts=state.members.filter(m=>m.memberType==="Scout"&&m.section===bSec);
+  const stat=scouts.map(m=>{let pts=0,pres=0;sessions.forEach(s=>{const r=s.records[m._k];if(r){pts+=Number(r.points)||0;if(r.present)pres++;}});return{m,pts,pres,held:sessions.length};});
+  const bestScouts=[...stat].sort((a,b)=>b.pts-a.pts);
+  const pa={};(state.patrols[bSec]||[]).forEach(p=>pa[p]={pts:0,count:0});
+  stat.forEach(r=>{const p=r.m.patrol;if(!p)return;(pa[p]=pa[p]||{pts:0,count:0});pa[p].pts+=r.pts;pa[p].count++;});
+  const bestPatrols=Object.entries(pa).map(([name,v])=>({name,...v})).sort((a,b)=>b.pts-a.pts);
+  const rc=i=>["#caa23a","#9aa3ad","#c08457"][i]||"var(--line)";
+  const row=(i,name,sub,val)=>`<div class="row" style="gap:12px;padding:9px 10px"><div class="rank-no" style="background:${rc(i)}">${i+1}</div><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(name)}</div><div class="muted">${esc(sub)}</div></div><div style="font-weight:700;font-size:18px;color:var(--primaryDark)">${val}</div></div>`;
+  const empty=`<div class="muted" style="text-align:center;padding:26px">No marks recorded for this range.</div>`;
+  $("#content").innerHTML=`
+    <div class="row" style="align-items:flex-end;margin-bottom:16px">
+      <label><span class="lab">Section</span><select id="bS" class="input">${SECTIONS.map(s=>`<option ${bSec===s.name?"selected":""}>${s.name}</option>`).join("")}</select></label>
+      <label><span class="lab">From</span><input id="bF" class="input" type="date" value="${bFrom}"/></label>
+      <label><span class="lab">To</span><input id="bT" class="input" type="date" value="${bTo}"/></label>
+      <div class="muted" style="padding-bottom:9px">${sessions.length} session(s)</div></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+      <div class="tablewrap"><div style="padding:13px 16px;border-bottom:1px solid var(--line);font-weight:700">⭐ Best Scout</div><div style="padding:8px">${bestScouts.length?bestScouts.map((r,i)=>row(i,r.m.name,`${r.m.patrol||"—"} · present ${r.pres}/${r.held}`,r.pts)).join(""):empty}</div></div>
+      <div class="tablewrap"><div style="padding:13px 16px;border-bottom:1px solid var(--line);font-weight:700">🏅 Best ${sectionMeta(bSec).group}</div><div style="padding:8px">${bestPatrols.some(p=>p.count)?bestPatrols.map((p,i)=>row(i,p.name,`${p.count} scout(s)`,p.pts)).join(""):empty}</div></div></div>`;
+  $("#bS").onchange=e=>{bSec=e.target.value;renderBoard();};
+  $("#bF").onchange=e=>{bFrom=e.target.value;renderBoard();};
+  $("#bT").onchange=e=>{bTo=e.target.value;renderBoard();};
+}
+
+/* ============================== settings ============================= */
+function renderSettings(){
+  if(!canEdit){$("#content").innerHTML=`<div class="card"><h3>Settings</h3><p class="muted">Leaders only.</p></div>`;return;}
+  const listEditor=(title,id)=>`<div style="border:1px solid var(--line);border-radius:10px;padding:12px">
+    <div style="font-weight:600;font-size:14px;margin-bottom:8px">${title}</div>
+    <div class="tagwrap" id="tags_${id}"></div>
+    <div class="row" style="gap:6px"><input class="input" data-add="${id}" placeholder="Add…" style="padding:6px 9px"/><button class="btn" data-addbtn="${id}" style="padding:6px 12px">Add</button></div></div>`;
+  const ed=[
+    ["patrols_Shaheen","Shaheen (Parwazs)",()=>state.patrols["Shaheen"],v=>state.patrols["Shaheen"]=v],
+    ["patrols_Boy","Boy Scout (Patrols)",()=>state.patrols["Boy Scout"],v=>state.patrols["Boy Scout"]=v],
+    ["patrols_Rover","Rover (Patrols)",()=>state.patrols["Rover"],v=>state.patrols["Rover"]=v],
+    ["rank_Shaheen","Shaheen — rank badges",()=>state.rankBadges["Shaheen"],v=>state.rankBadges["Shaheen"]=v],
+    ["rank_Boy","Boy Scout — rank badges",()=>state.rankBadges["Boy Scout"],v=>state.rankBadges["Boy Scout"]=v],
+    ["rank_Rover","Rover — rank badges",()=>state.rankBadges["Rover"],v=>state.rankBadges["Rover"]=v],
+    ["prof","Proficiency badges (all sections)",()=>state.proficiencyBadges,v=>state.proficiencyBadges=v],
+  ];
+  const g={},s={};ed.forEach(([id,,gg,ss])=>{g[id]=gg;s[id]=ss;});
+  $("#content").innerHTML=`<div class="grid" style="gap:16px">
+    <div class="card"><h3>Group details</h3><div class="grid" style="gap:12px">
+      <label><span class="lab">Institution name</span><input id="setInst" class="input" value="${esc(state.institution)}"/></label>
+      <label><span class="lab">Association</span><input id="setAssoc" class="input" value="${esc(state.association)}"/></label>
+      <button class="btn btn-primary" id="saveDetails" style="justify-self:start">💾 Save details</button></div></div>
+    <div class="card"><h3>Patrols by section</h3><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">${ed.slice(0,3).map(([id,t])=>listEditor(t,id)).join("")}</div></div>
+    <div class="card"><h3>Badge catalogues</h3><p class="muted" style="margin-top:-8px">These autocomplete on a member's badges.</p>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">${ed.slice(3).map(([id,t])=>listEditor(t,id)).join("")}</div></div>
+    <div class="card"><h3>Data & backup</h3>
+      <div class="row"><button class="btn" id="expCSV">⬇️ Members CSV</button><button class="btn" id="expJSON">⬇️ Full backup (JSON)</button></div>
+      <p class="muted" style="margin-bottom:0">Your live data is in the database. This backup is an extra safety copy.</p></div></div>`;
+  const paintTags=()=>{ed.forEach(([id,,gg])=>{const box=$("#tags_"+id);box.innerHTML=gg().length?gg().map(it=>`<span class="tag">${esc(it)}<button class="icon-btn" data-rm="${id}::${esc(it)}" style="padding:0;color:var(--danger)">✕</button></span>`).join(""):'<span class="muted">None yet.</span>';
+    box.querySelectorAll("[data-rm]").forEach(b=>b.onclick=async()=>{const idx=b.dataset.rm.indexOf("::");const k=b.dataset.rm.slice(0,idx),val=b.dataset.rm.slice(idx+2);s[k](g[k]().filter(x=>x!==val));await saveConfig();paintTags();});});};
+  paintTags();
+  ed.forEach(([id])=>{const add=async()=>{const inp=$("#content").querySelector(`[data-add="${id}"]`);const v=inp.value.trim();if(v&&!g[id]().includes(v)){s[id]([...g[id](),v]);await saveConfig();inp.value="";paintTags();}};
+    $("#content").querySelector(`[data-addbtn="${id}"]`).onclick=add;
+    $("#content").querySelector(`[data-add="${id}"]`).onkeydown=e=>{if(e.key==="Enter")add();};});
+  $("#saveDetails").onclick=async()=>{state.institution=$("#setInst").value;state.association=$("#setAssoc").value;await saveConfig();toast("Saved");renderApp();};
+  $("#expCSV").onclick=()=>{const cols=["id","name","memberType","role","section","patrol","email","contact","dob","joinDate","status"];const e=v=>`"${String(v==null?"":v).replace(/"/g,'""')}"`;const rows=[cols.join(","),...state.members.map(m=>cols.map(c=>e(m[c])).join(","))];download(rows.join("\n"),"ksg_members.csv","text/csv");};
+  $("#expJSON").onclick=()=>download(JSON.stringify(state,null,2),"ksg_backup.json","application/json");
+}
+
+/* ============================== boot ================================= */
+boot();
+</script>
+</body>
+</html>
