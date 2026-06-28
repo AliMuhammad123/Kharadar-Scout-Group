@@ -226,7 +226,7 @@ function membersRows(){const list=filteredMembers();
   return list.map(m=>{const age=m.dob?ageFrom(m.dob):m.manualAge;const meta=sectionMeta(m.section);
     return`<tr>
       <td class="mono" style="font-size:12.5px;color:var(--primaryDark)">${esc(m.id)}</td>
-      <td style="font-weight:600">${esc(m.name)}${m.memberType!=="Scout"?` <span class="pill" style="background:var(--soft);color:var(--amber)">${esc(m.memberType)}</span>`:""}</td>
+      <td style="font-weight:600"><a href="#" data-view="${m._k}" style="color:var(--ink);text-decoration:none;border-bottom:1px dotted var(--line)">${esc(m.name)}</a>${m.memberType!=="Scout"?` <span class="pill" style="background:var(--soft);color:var(--amber)">${esc(m.memberType)}</span>`:""}</td>
       <td><span style="color:${meta.color};font-weight:600">${esc(m.section)}</span></td>
       <td style="color:var(--sub)">${esc(m.memberType==="Scout"?(m.patrol||"—"):(m.role||"—"))}</td>
       <td style="color:var(--sub)">${age==null?"—":age}</td>
@@ -249,9 +249,46 @@ function renderMembers(){
   if($("#addM"))$("#addM").onclick=()=>openMember(null);
   wireRows();
 }
-function wireRows(){if(!canEdit)return;
+function wireRows(){
+  $("#mBody").querySelectorAll("[data-view]").forEach(a=>a.onclick=e=>{e.preventDefault();openMemberView(state.members.find(m=>m._k==a.dataset.view));});
+  if(!canEdit)return;
   $("#mBody").querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openMember(state.members.find(m=>m._k==b.dataset.edit)));
   $("#mBody").querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>confirmDel(state.members.find(m=>m._k==b.dataset.del)));}
+
+function memberStats(m){let pts=0,present=0,held=0;Object.values(state.sessions).forEach(s=>{const r=s.records&&s.records[m._k];if(r){held++;pts+=Number(r.points)||0;if(r.present)present++;}});return{pts,present,held,pct:held?Math.round(present/held*100):null};}
+function openMemberView(m){
+  if(!m)return;const age=m.dob?ageFrom(m.dob):m.manualAge;const meta=sectionMeta(m.section);const st=memberStats(m);
+  const badgeList=(arr,empty)=>arr&&arr.length?arr.map(b=>`<div class="row" style="justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line)"><span>${esc(b.name||"—")}</span><span class="muted">${b.date?fmtDate(b.date):""}</span></div>`).join(""):`<div class="muted" style="padding:4px 0">${empty}</div>`;
+  const fieldRow=(l,v)=>`<div class="row" style="justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line)"><span class="muted">${l}</span><span style="font-weight:600">${esc(v||"—")}</span></div>`;
+  const bg=document.createElement("div");bg.className="modal-bg";
+  bg.innerHTML=`<div class="modal" style="max-width:520px">
+    <div class="row" style="justify-content:space-between;align-items:flex-start">
+      <div><h2>${esc(m.name)}</h2><div class="muted mono" style="margin-top:2px">${esc(m.id)}</div></div>
+      <button class="icon-btn" id="vx">✕</button></div>
+    <div class="row" style="gap:8px;margin:12px 0">
+      <span class="pill" style="background:var(--soft);color:${meta.color}">${esc(m.section)}</span>
+      <span class="pill" style="background:var(--soft);color:var(--amber)">${esc(m.memberType==="Scout"?(m.patrol||"Scout"):(m.role||m.memberType))}</span>
+      <span class="pill" style="background:${m.status==="Active"?"var(--activeBg)":"var(--offBg)"};color:${m.status==="Active"?"var(--activeText)":"var(--offText)"}">${esc(m.status)}</span></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+      <div class="card" style="text-align:center;padding:12px"><div class="stat-v" style="font-size:22px">${st.pts}</div><div class="muted">Total marks</div></div>
+      <div class="card" style="text-align:center;padding:12px"><div class="stat-v" style="font-size:22px">${st.pct==null?"—":st.pct+"%"}</div><div class="muted">Attendance</div></div>
+      <div class="card" style="text-align:center;padding:12px"><div class="stat-v" style="font-size:22px">${st.present}/${st.held}</div><div class="muted">Present</div></div></div>
+    <div style="margin-bottom:12px">
+      ${fieldRow("Age",age==null?"":age)}
+      ${fieldRow("Date of birth",m.dob?fmtDate(m.dob):"")}
+      ${fieldRow("Joined scouting",m.joinDate?fmtDate(m.joinDate):"")}
+      ${fieldRow("Email",m.email)}
+      ${fieldRow("Contact",m.contact)}
+      ${m.notes?fieldRow("Notes",m.notes):""}</div>
+    <div style="font-size:12px;font-weight:700;color:var(--sub);margin-bottom:4px">🏅 RANK BADGES</div>
+    ${badgeList(m.rankBadges,"None recorded.")}
+    <div style="font-size:12px;font-weight:700;color:var(--sub);margin:14px 0 4px">🎖️ PROFICIENCY BADGES</div>
+    ${badgeList(m.proficiencyBadges,"None recorded.")}
+    <div class="row" style="justify-content:flex-end;margin-top:18px">${canEdit?`<button class="btn" id="vEdit">✏️ Edit</button>`:""}<button class="btn btn-primary" id="vc">Close</button></div></div>`;
+  document.body.appendChild(bg);bg.onclick=e=>{if(e.target===bg)bg.remove();};
+  bg.querySelector("#vx").onclick=()=>bg.remove();bg.querySelector("#vc").onclick=()=>bg.remove();
+  if(bg.querySelector("#vEdit"))bg.querySelector("#vEdit").onclick=()=>{bg.remove();openMember(m);};
+}
 
 let mform=null;
 function blankMember(){return{_k:uid(),id:nextId(),name:"",email:"",contact:"",memberType:"Scout",role:"",section:"Shaheen",patrol:"",dob:"",manualAge:"",joinDate:new Date().toISOString().slice(0,10),status:"Active",rankBadges:[],proficiencyBadges:[],notes:""};}
@@ -438,21 +475,22 @@ function renderPlanner(){
       <label><span class="lab">Sunday date</span><input id="pD" class="input" type="date" value="${pDate}"/></label>
       <div style="flex:1"></div>
       ${canEdit?`<button class="btn btn-primary" id="pAdd">＋ Add activity</button>`:""}</div>
-    ${items.length?`<div class="grid" style="gap:10px">${items.map(it=>`
-      <div class="card" style="border-left:3px solid ${secColor(it.section)}">
+    ${(function(){
+      if(!items.length)return `<div class="card" style="text-align:center;color:var(--sub);padding:36px">No activities planned for ${fmtDate(pDate)} yet.${canEdit?" Click “Add activity”.":""}</div>`;
+      const card=it=>`<div class="card" style="border-left:3px solid ${secColor(it.section)}">
         <div class="row" style="justify-content:space-between;align-items:flex-start">
-          <div style="min-width:0">
-            <div class="row" style="gap:8px">
-              ${it.time?`<span class="mono" style="font-weight:700">${esc(it.time)}</span>`:""}
-              <span style="font-weight:700">${esc(it.title)}</span>
-              ${it.section&&it.section!=="All"?`<span class="pill" style="background:var(--soft);color:${secColor(it.section)}">${esc(it.section)}</span>`:`<span class="pill" style="background:var(--soft);color:var(--sub)">All sections</span>`}
-            </div>
-            ${it.detail?`<div class="muted" style="margin-top:6px;font-size:13px;color:var(--ink)">${esc(it.detail)}</div>`:""}
-            ${it.lead?`<div class="muted" style="margin-top:4px">In charge: ${esc(it.lead)}</div>`:""}
-          </div>
+          <div style="min-width:0"><div class="row" style="gap:8px">
+            ${it.time?`<span class="mono" style="font-weight:700">${esc(it.time)}</span>`:""}
+            <span style="font-weight:700">${esc(it.title)}</span></div>
+            ${it.detail?`<div style="margin-top:6px;font-size:13px">${esc(it.detail)}</div>`:""}
+            ${it.lead?`<div class="muted" style="margin-top:4px">In charge: ${esc(it.lead)}</div>`:""}</div>
           ${canEdit?`<div style="white-space:nowrap"><button class="icon-btn" data-pe="${it.id}">✏️</button><button class="icon-btn" data-pd="${it.id}">🗑️</button></div>`:""}
-        </div></div>`).join("")}</div>`
-      :`<div class="card" style="text-align:center;color:var(--sub);padding:36px">No activities planned for ${fmtDate(pDate)} yet.${canEdit?" Click “Add activity”.":""}</div>`}
+        </div></div>`;
+      const block=(label,color,list)=>list.length?`<div style="margin:4px 0 8px;font-weight:700;color:${color}">${label}</div><div class="grid" style="gap:10px;margin-bottom:18px">${list.map(card).join("")}</div>`:"";
+      let out=block("🎯 Group activity — all sections","var(--amber)",items.filter(it=>!it.section||it.section==="All"));
+      SECTIONS.forEach(s=>{out+=block(s.name,s.color,items.filter(it=>it.section===s.name));});
+      return out;
+    })()}
     ${upcoming.length?`<div class="muted" style="margin-top:14px">Other planned Sundays: ${upcoming.map(d=>`<a href="#" data-jump="${d}">${fmtDate(d)}</a>`).join(" · ")}</div>`:""}`;
   $("#pD").onchange=e=>{pDate=e.target.value;renderPlanner();};
   $("#content").querySelectorAll("[data-jump]").forEach(a=>a.onclick=e=>{e.preventDefault();pDate=a.dataset.jump;renderPlanner();});
