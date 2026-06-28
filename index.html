@@ -172,7 +172,7 @@ async function logout(){await sb.auth.signOut();currentUser=null;renderAuth();}
 /* ============================== shell ================================= */
 function renderApp(){
   const tabs=[["dash","🏕️ Dashboard"],["members","👥 Members"],["sessions","✅ Attendance & Marks"],["board","🏆 Leaderboard"],["planner","🗓️ Sunday Planner"]];
-  if(canEdit)tabs.push(["settings","⚙️ Settings"]);
+  if(canEdit)tabs.push(["reports","📄 Reports"],["settings","⚙️ Settings"]);
   $("#app").innerHTML=`<div class="wrap">
     <div class="row" style="justify-content:space-between;margin-bottom:6px">
       <div class="row" style="gap:12px"><div class="lead">🛡️</div>
@@ -186,7 +186,7 @@ function renderApp(){
     <div id="content"></div></div>`;
   $("#logoutBtn").onclick=logout;
   $("#tabbar").querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;renderApp();});
-  ({dash:renderDash,members:renderMembers,sessions:renderSessions,board:renderBoard,planner:renderPlanner,settings:renderSettings}[tab]||renderDash)();
+  ({dash:renderDash,members:renderMembers,sessions:renderSessions,board:renderBoard,planner:renderPlanner,reports:renderReports,settings:renderSettings}[tab]||renderDash)();
 }
 
 /* ============================== dashboard ============================= */
@@ -528,6 +528,7 @@ function renderPlanner(){
       <label><span class="lab">Sunday date</span><input id="pD" class="input" type="date" value="${pDate}"/></label>
       <div style="flex:1"></div>
       <button class="btn" id="waAll" style="background:#25D366;color:#fff;border:none">📲 Send whole plan</button>
+      <button class="btn" id="pReport">📄 Report for District</button>
       ${canEdit?`<button class="btn btn-primary" id="pAdd">＋ Add activity</button>`:""}</div>
     ${(function(){
       if(!items.length)return `<div class="card" style="text-align:center;color:var(--sub);padding:36px">No activities planned for ${fmtDate(pDate)} yet.${canEdit?" Click “Add activity”.":""}</div>`;
@@ -550,6 +551,7 @@ function renderPlanner(){
   $("#pD").onchange=e=>{pDate=e.target.value;renderPlanner();};
   $("#content").querySelectorAll("[data-jump]").forEach(a=>a.onclick=e=>{e.preventDefault();pDate=a.dataset.jump;renderPlanner();});
   $("#waAll").onclick=()=>sendWhatsApp("all");
+  $("#pReport").onclick=()=>downloadPlanReport();
   $("#content").querySelectorAll("[data-wa]").forEach(b=>b.onclick=()=>sendWhatsApp(b.dataset.wa));
   if(canEdit){
     if($("#pAdd"))$("#pAdd").onclick=()=>openActivity(null);
@@ -578,6 +580,44 @@ function sendWhatsApp(scope){
   if(!plannerItems().length)return toast("No activities to send");
   window.open("https://wa.me/?text="+encodeURIComponent(planMessage(scope)),"_blank");
 }
+function planReportHtml(){
+  const items=[...plannerItems()].sort((a,b)=>String(a.time).localeCompare(String(b.time)));
+  const rowsFor=list=>list.map(it=>`<tr><td class="t">${esc(it.time||"—")}</td><td><b>${esc(it.title)}</b>${it.detail?`<div class="d">${esc(it.detail)}</div>`:""}</td><td>${esc(it.lead||"—")}</td></tr>`).join("");
+  const tableFor=(label,list)=>list.length?`<h3>${esc(label)}</h3><table><thead><tr><th style="width:90px">Time</th><th>Activity</th><th style="width:150px">In charge</th></tr></thead><tbody>${rowsFor(list)}</tbody></table>`:"";
+  let sections=tableFor("Group activities — all sections",items.filter(it=>!it.section||it.section==="All"));
+  SECTIONS.forEach(s=>{sections+=tableFor(s.name+" Section",items.filter(it=>it.section===s.name));});
+  const gen=new Date().toLocaleString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Sunday Activity Report — ${fmtDate(pDate)}</title>
+  <style>
+    *{box-sizing:border-box}body{font-family:Georgia,'Times New Roman',serif;color:#1a2230;max-width:780px;margin:0 auto;padding:32px 28px}
+    .top{text-align:center;border-bottom:3px double #0d6e63;padding-bottom:14px;margin-bottom:18px}
+    .top h1{margin:0;font-size:22px;color:#0a574e}.top .assoc{color:#555;font-size:14px;margin-top:3px}
+    .meta{display:flex;justify-content:space-between;font-size:14px;margin:14px 0 6px}
+    h2{font-size:17px;margin:18px 0 6px;text-align:center}
+    h3{font-size:15px;margin:18px 0 6px;color:#0a574e;border-left:4px solid #0d6e63;padding-left:8px}
+    table{width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:6px}
+    th{background:#eef3f2;text-align:left;padding:7px 9px;border:1px solid #cdd6d4;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+    td{padding:7px 9px;border:1px solid #d8dee2;vertical-align:top}.t{font-family:monospace}.d{color:#555;font-size:12.5px;margin-top:2px}
+    .sign{margin-top:46px;display:flex;justify-content:space-between}.sign div{width:42%;border-top:1px solid #333;padding-top:5px;font-size:13px;text-align:center;color:#444}
+    .foot{margin-top:24px;font-size:12px;color:#777;text-align:center}
+    .bar{text-align:center;margin-bottom:18px}.bar button{background:#0d6e63;color:#fff;border:none;padding:9px 18px;border-radius:7px;font-size:14px;cursor:pointer;font-family:sans-serif}
+    @media print{.bar{display:none}body{padding:0}}
+  </style></head><body>
+  <div class="bar"><button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
+  <div class="top"><h1>${esc(state.institution)}</h1><div class="assoc">${esc(state.association)}</div></div>
+  <h2>Sunday Activity Report</h2>
+  <div class="meta"><span><b>Date:</b> ${fmtDate(pDate)}</span><span><b>Generated:</b> ${gen}</span></div>
+  ${sections||"<p>No activities recorded for this date.</p>"}
+  <div class="sign"><div>Group Scout Leader</div><div>District Officer</div></div>
+  <div class="foot">Generated from the ${esc(state.institution)} management system.</div>
+  </body></html>`;
+}
+function downloadPlanReport(){
+  if(!plannerItems().length)return toast("No activities to report");
+  const w=window.open("","_blank");
+  if(!w){toast("Allow pop-ups to open the report");return;}
+  w.document.write(planReportHtml());w.document.close();w.focus();
+}
 function openActivity(it){
   const isEdit=!!it;const f=it?{...it}:{id:uid(),time:"",title:"",detail:"",lead:"",section:"All"};
   const bg=document.createElement("div");bg.className="modal-bg";
@@ -600,6 +640,85 @@ function openActivity(it){
     d.items=isEdit?d.items.map(x=>x.id===v.id?v:x):[...d.items,v];
     state.activities[pDate]=d;await saveActivities();bg.remove();renderPlanner();toast("Saved");
   };
+}
+
+/* ============================== reports ============================= */
+let rYear=new Date().getFullYear(),rQ=Math.floor(new Date().getMonth()/3)+1,rMode="quarter",rFrom="",rTo="";
+function quarterRange(y,q){const t=[["01-01","03-31","Jan–Mar"],["04-01","06-30","Apr–Jun"],["07-01","09-30","Jul–Sep"],["10-01","12-31","Oct–Dec"]][q-1];return{from:y+"-"+t[0],to:y+"-"+t[1],label:`Quarter ${q} · ${t[2]} ${y}`};}
+function reportRange(){return rMode==="custom"?{from:rFrom,to:rTo,label:`${rFrom?fmtDate(rFrom):"…"} to ${rTo?fmtDate(rTo):"…"}`}:quarterRange(rYear,rQ);}
+function buildReportBody(rg){
+  const inR=d=>(!rg.from||d>=rg.from)&&(!rg.to||d<=rg.to);
+  const bonus=Number(state.attendanceBonus)||0;
+  const mById={};state.members.forEach(m=>mById[m._k]=m);
+  const th="padding:7px 9px;border:1px solid #ccc;background:#f2f2f2;text-align:left;font-size:12px";
+  const td="padding:7px 9px;border:1px solid #ccc;font-size:12px";
+  // membership
+  let memRows=SECTIONS.map(s=>{const sc=state.members.filter(m=>m.memberType==="Scout"&&m.section===s.name).length;const ld=state.members.filter(m=>m.memberType!=="Scout"&&m.section===s.name).length;return `<tr><td style="${td}">${s.name}</td><td style="${td}">${sc}</td><td style="${td}">${ld}</td><td style="${td}">${sc+ld}</td></tr>`;}).join("");
+  const totalScouts=state.members.filter(m=>m.memberType==="Scout").length,totalLeaders=state.members.filter(m=>m.memberType!=="Scout").length;
+  // per-section attendance + competition
+  let secBlocks=SECTIONS.map(s=>{
+    const sess=Object.values(state.sessions).filter(x=>x.section===s.name&&inR(x.date)).sort((a,b)=>a.date.localeCompare(b.date));
+    const scouts=state.members.filter(m=>m.memberType==="Scout"&&m.section===s.name);
+    let presN=0,recN=0;const sessRows=sess.map(x=>{let p=0,t=0;Object.entries(x.records||{}).forEach(([k,r])=>{const mm=mById[k];if(mm&&mm.memberType==="Scout"){t++;if(r.present)p++;}});presN+=p;recN+=t;return `<tr><td style="${td}">${fmtDate(x.date)}</td><td style="${td}">${esc(x.activity||"—")}</td><td style="${td}">${p}/${t}</td></tr>`;}).join("");
+    const ind=scouts.map(m=>{let pts=0;sess.forEach(x=>{const r=x.records&&x.records[m._k];if(r){pts+=Number(r.points)||0;if(r.present)pts+=bonus;}});return{n:m.name,pts};}).sort((a,b)=>b.pts-a.pts).slice(0,3);
+    const pa={};(state.patrols[s.name]||[]).forEach(p=>pa[p]=0);sess.forEach(x=>{const pp=x.patrolPoints||{};Object.entries(pp).forEach(([p,v])=>{pa[p]=(pa[p]||0)+(Number(v)||0);});});
+    const pat=Object.entries(pa).map(([n,v])=>({n,v})).sort((a,b)=>b.v-a.v).slice(0,3);
+    return `<h3 style="margin:18px 0 6px;color:#0a574e">${s.name} Section</h3>
+      <p style="margin:0 0 6px;font-size:12px">Sessions held: <b>${sess.length}</b> · Overall attendance: <b>${recN?Math.round(presN/recN*100)+"%":"—"}</b></p>
+      ${sess.length?`<table style="border-collapse:collapse;width:100%;margin-bottom:8px"><tr><th style="${th}">Date</th><th style="${th}">Activity/Competition</th><th style="${th}">Present</th></tr>${sessRows}</table>`:""}
+      <div style="display:flex;gap:18px;flex-wrap:wrap">
+        <div><b style="font-size:12px">Best ${sectionMeta(s.name).indiv} (individual)</b><ol style="margin:4px 0;font-size:12px">${ind.length&&ind[0].pts?ind.map(x=>`<li>${esc(x.n)} — ${x.pts}</li>`).join(""):"<li>—</li>"}</ol></div>
+        <div><b style="font-size:12px">Best ${sectionMeta(s.name).group} (team)</b><ol style="margin:4px 0;font-size:12px">${pat.length&&pat[0].v?pat.map(x=>`<li>${esc(x.n)} — ${x.v}</li>`).join(""):"<li>—</li>"}</ol></div>
+      </div>`;
+  }).join("");
+  // badges earned in range
+  const bRows=[];state.members.forEach(m=>{(m.rankBadges||[]).forEach(b=>{if(b.date&&inR(b.date))bRows.push(`<tr><td style="${td}">${fmtDate(b.date)}</td><td style="${td}">${esc(m.name)}</td><td style="${td}">${esc(m.section)}</td><td style="${td}">Rank</td><td style="${td}">${esc(b.name)}</td></tr>`);});(m.proficiencyBadges||[]).forEach(b=>{if(b.date&&inR(b.date))bRows.push(`<tr><td style="${td}">${fmtDate(b.date)}</td><td style="${td}">${esc(m.name)}</td><td style="${td}">${esc(m.section)}</td><td style="${td}">Proficiency</td><td style="${td}">${esc(b.name)}</td></tr>`);});});
+  // activities conducted
+  const acts=Object.values(state.activities).filter(a=>inR(a.date)).sort((a,b)=>a.date.localeCompare(b.date));
+  const actRows=acts.map(a=>`<tr><td style="${td}">${fmtDate(a.date)}</td><td style="${td}">${(a.items||[]).map(i=>esc((i.section&&i.section!=="All"?"["+i.section+"] ":"")+i.title)).join("; ")||"—"}</td></tr>`).join("");
+  return `
+    <h1 style="margin:0;font-size:20px">${esc(state.institution)}</h1>
+    <div style="color:#555;font-size:13px">${esc(state.association)}</div>
+    <h2 style="margin:10px 0 2px;font-size:16px">Quarterly Activity Report</h2>
+    <div style="font-size:13px;color:#555;margin-bottom:14px">${esc(rg.label)} &nbsp;·&nbsp; Generated ${fmtDate(new Date().toISOString().slice(0,10))}</div>
+    <h3 style="margin:14px 0 6px;color:#0a574e">1. Membership</h3>
+    <table style="border-collapse:collapse;width:100%"><tr><th style="${th}">Section</th><th style="${th}">Scouts</th><th style="${th}">Leaders</th><th style="${th}">Total</th></tr>${memRows}
+      <tr><td style="${td}"><b>Total</b></td><td style="${td}"><b>${totalScouts}</b></td><td style="${td}"><b>${totalLeaders}</b></td><td style="${td}"><b>${totalScouts+totalLeaders}</b></td></tr></table>
+    <h3 style="margin:18px 0 6px;color:#0a574e">2. Attendance & Competitions by section</h3>
+    ${secBlocks}
+    <h3 style="margin:18px 0 6px;color:#0a574e">3. Badges earned this quarter</h3>
+    ${bRows.length?`<table style="border-collapse:collapse;width:100%"><tr><th style="${th}">Date</th><th style="${th}">Member</th><th style="${th}">Section</th><th style="${th}">Type</th><th style="${th}">Badge</th></tr>${bRows.join("")}</table>`:`<p style="font-size:12px;color:#555">None recorded in this period.</p>`}
+    <h3 style="margin:18px 0 6px;color:#0a574e">4. Sunday activities conducted</h3>
+    ${acts.length?`<table style="border-collapse:collapse;width:100%"><tr><th style="${th}">Date</th><th style="${th}">Activities</th></tr>${actRows}</table>`:`<p style="font-size:12px;color:#555">No activities logged in this period.</p>`}
+    <div style="margin-top:24px;font-size:12px;color:#555">Group Scout Leader: __________________________   Signature: __________________________</div>`;
+}
+function reportDoc(body){return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>KSG Report</title>
+  <style>body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;max-width:820px;margin:0 auto;padding:28px;line-height:1.4}
+  @media print{.noprint{display:none}} ol{padding-left:18px}</style></head>
+  <body><button class="noprint" onclick="window.print()" style="float:right;background:#0d6e63;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-weight:600;cursor:pointer">🖨️ Print / Save as PDF</button>${body}</body></html>`;}
+function renderReports(){
+  const rg=reportRange();const body=buildReportBody(rg);
+  $("#content").innerHTML=`
+    <div class="card row" style="align-items:flex-end;margin-bottom:14px">
+      <label><span class="lab">Period</span><select id="rMode" class="input"><option value="quarter" ${rMode==="quarter"?"selected":""}>Quarter</option><option value="custom" ${rMode==="custom"?"selected":""}>Custom dates</option></select></label>
+      ${rMode==="quarter"?`
+        <label><span class="lab">Year</span><input id="rYear" class="input" type="number" value="${rYear}" style="width:100px"/></label>
+        <label><span class="lab">Quarter</span><select id="rQ" class="input">${[1,2,3,4].map(q=>`<option value="${q}" ${rQ===q?"selected":""}>Q${q}</option>`).join("")}</select></label>`
+      :`<label><span class="lab">From</span><input id="rFrom" class="input" type="date" value="${rFrom}"/></label>
+        <label><span class="lab">To</span><input id="rTo" class="input" type="date" value="${rTo}"/></label>`}
+      <div style="flex:1"></div>
+      <button class="btn btn-primary" id="rPrint">🖨️ Print / Save PDF</button>
+      <button class="btn" id="rDl">⬇️ Download</button>
+    </div>
+    <div class="muted" style="margin-bottom:10px">Preview — ${esc(rg.label)}</div>
+    <div class="card" style="background:#fff">${body}</div>`;
+  $("#rMode").onchange=e=>{rMode=e.target.value;renderReports();};
+  if($("#rYear"))$("#rYear").onchange=e=>{rYear=Number(e.target.value)||rYear;renderReports();};
+  if($("#rQ"))$("#rQ").onchange=e=>{rQ=Number(e.target.value);renderReports();};
+  if($("#rFrom"))$("#rFrom").onchange=e=>{rFrom=e.target.value;renderReports();};
+  if($("#rTo"))$("#rTo").onchange=e=>{rTo=e.target.value;renderReports();};
+  $("#rPrint").onclick=()=>{const w=window.open("","_blank");if(!w)return toast("Allow pop-ups to print");w.document.write(reportDoc(buildReportBody(reportRange())));w.document.close();};
+  $("#rDl").onclick=()=>{const rg2=reportRange();download(reportDoc(buildReportBody(rg2)),`KSG_report_${(rg2.label||"").replace(/[^a-z0-9]+/gi,"_")}.html`,"text/html");};
 }
 
 /* ============================== boot ================================= */
