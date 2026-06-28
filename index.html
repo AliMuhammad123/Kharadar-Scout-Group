@@ -63,7 +63,7 @@ const SUPABASE_ANON = "sb_publishable_6SOmSq9XCSH-tokEoZTnbg_DMhhordC";
 /* ============================================================ */
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-const APP_VERSION = "v9 · fees-fix";
+const APP_VERSION = "v10 · fees";
 
 /* ----------------------------- model ---------------------------------- */
 const SECTIONS=[
@@ -661,12 +661,18 @@ function renderFees(){
   const fee=Number(state.feeMonthly[fSec])||0;
   const scouts=state.members.filter(m=>m.memberType==="Scout"&&m.section===fSec&&m.status==="Active").sort((a,b)=>String(a.patrol).localeCompare(String(b.patrol))||String(a.name).localeCompare(String(b.name)));
   const ymOf=i=>`${fYear}-${String(i+1).padStart(2,"0")}`;
-  const cell=(mk,i)=>{const paid=feePaid(mk,ymOf(i));return `<td style="padding:4px;text-align:center"><button class="fcell" data-fk="${mk}|${ymOf(i)}" style="width:30px;height:28px;border-radius:6px;border:1px solid var(--line);cursor:pointer;font-size:13px;background:${paid?"var(--activeBg)":"#fff"};color:${paid?"var(--activeText)":"var(--sub)"}">${paid?"✓":""}</button></td>`;};
   const rowPaid=mk=>MONTHS.reduce((n,_,i)=>n+(feePaid(mk,ymOf(i))?1:0),0);
-  const body=scouts.map(m=>`<tr><td style="padding:6px 10px;font-weight:600;white-space:nowrap">${esc(m.name)}<div class="muted">${esc(m.patrol||"")}</div></td>
+  const cellStyle=p=>`width:30px;height:28px;border-radius:6px;border:1px solid var(--line);cursor:pointer;font-size:13px;background:${p?"var(--activeBg)":"#fff"};color:${p?"var(--activeText)":"var(--sub)"}`;
+  const cell=(mk,i)=>{const p=feePaid(mk,ymOf(i));return `<td style="padding:4px;text-align:center"><button class="fcell" id="fc_${mk}_${i}" data-mk="${mk}" data-i="${i}" style="${cellStyle(p)}">${p?"✓":""}</button></td>`;};
+  const body=scouts.map(m=>{const rp=rowPaid(m._k);return `<tr>
+    <td style="padding:6px 10px;font-weight:600;white-space:nowrap">${esc(m.name)}<div class="muted">${esc(m.patrol||"")}</div></td>
     ${MONTHS.map((_,i)=>cell(m._k,i)).join("")}
-    <td style="padding:6px 10px;text-align:right;white-space:nowrap"><b id="rp_${m._k}">Rs ${rowPaid(m._k)*fee}</b><div class="muted" id="rc_${m._k}">${rowPaid(m._k)}/12</div></td></tr>`).join("");
+    <td style="padding:6px 10px;text-align:right;white-space:nowrap;color:var(--primaryDark)"><b id="rp_${m._k}">Rs ${rp*fee}</b><div class="muted" id="rc_${m._k}">${rp}/12</div></td>
+    <td style="padding:6px 10px;text-align:right;white-space:nowrap;color:var(--danger)"><b id="rd_${m._k}">Rs ${(12-rp)*fee}</b><div class="muted">due</div></td>
+    <td style="padding:6px 10px;text-align:center"><button class="payall" data-mk="${m._k}" style="background:var(--primary);color:#fff;border:none;border-radius:7px;padding:5px 10px;font-size:12.5px;cursor:pointer;white-space:nowrap">${rp===12?"Clear":"Pay all"}</button></td>
+  </tr>`;}).join("");
   const collected=scouts.reduce((s,m)=>s+rowPaid(m._k)*fee,0);
+  const outstanding=scouts.reduce((s,m)=>s+(12-rowPaid(m._k))*fee,0);
   $("#content").innerHTML=`
     <div class="card row" style="align-items:flex-end;margin-bottom:14px">
       <label><span class="lab">Year</span><input id="fY" class="input" type="number" value="${fYear}" style="width:100px"/></label>
@@ -675,20 +681,26 @@ function renderFees(){
       <div style="text-align:right"><div class="muted">Monthly fee</div><div style="font-weight:700;font-size:18px">Rs ${fee}</div></div>
     </div>
     ${scouts.length?`<div class="tablewrap scrollx"><table style="font-size:13px"><thead><tr>
-      <th style="padding:8px 10px">Scout</th>${MONTHS.map(m=>`<th style="padding:8px 4px;text-align:center">${m}</th>`).join("")}<th style="padding:8px 10px;text-align:right">Paid</th></tr></thead>
+      <th style="padding:8px 10px">Scout</th>${MONTHS.map(m=>`<th style="padding:8px 4px;text-align:center">${m}</th>`).join("")}<th style="padding:8px 10px;text-align:right">Paid</th><th style="padding:8px 10px;text-align:right">Due</th><th style="padding:8px 10px;text-align:center">Action</th></tr></thead>
       <tbody>${body}</tbody></table></div>
-      <div class="card" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
-        <div><div class="muted">Total collected — ${fSec} ${fYear}</div><div style="font-weight:800;font-size:24px;color:var(--primaryDark)" id="feeTotal">Rs ${collected}</div></div>
-        <div class="muted" style="text-align:right">${scouts.length} scouts · tap a month to mark paid/unpaid</div></div>`
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+        <div class="card"><div class="muted">Total collected — ${fSec} ${fYear}</div><div style="font-weight:800;font-size:24px;color:var(--primaryDark)" id="feeTotal">Rs ${collected}</div></div>
+        <div class="card"><div class="muted">Total outstanding (full year)</div><div style="font-weight:800;font-size:24px;color:var(--danger)" id="feeOut">Rs ${outstanding}</div></div></div>
+      <div class="muted" style="margin-top:10px">Tap a month to mark it paid (✓). “Pay all” marks the whole year. Due = unpaid months × Rs ${fee}.</div>`
       :`<div class="card" style="text-align:center;color:var(--sub);padding:40px">No active scouts in ${fSec}.</div>`}`;
   $("#fY").onchange=e=>{fYear=Number(e.target.value)||fYear;renderFees();};
   $("#fS").onchange=e=>{fSec=e.target.value;renderFees();};
-  const recalc=()=>{let tot=0;scouts.forEach(m=>{const rp=MONTHS.reduce((n,_,i)=>n+(feePaid(m._k,ymOf(i))?1:0),0);tot+=rp*fee;const el=$("#rp_"+m._k);if(el)el.textContent="Rs "+rp*fee;const ec=$("#rc_"+m._k);if(ec)ec.textContent=rp+"/12";});const ft=$("#feeTotal");if(ft)ft.textContent="Rs "+tot;};
+  const gid=id=>document.getElementById(id);
+  const recalc=()=>{let tot=0,out=0;scouts.forEach(m=>{const rp=rowPaid(m._k);tot+=rp*fee;out+=(12-rp)*fee;const a=gid("rp_"+m._k);if(a)a.textContent="Rs "+rp*fee;const c=gid("rc_"+m._k);if(c)c.textContent=rp+"/12";const d=gid("rd_"+m._k);if(d)d.textContent="Rs "+(12-rp)*fee;});const ft=gid("feeTotal");if(ft)ft.textContent="Rs "+tot;const fo=gid("feeOut");if(fo)fo.textContent="Rs "+out;};
+  const paintCell=(mk,i)=>{const b=gid("fc_"+mk+"_"+i);if(!b)return;const p=feePaid(mk,ymOf(i));b.textContent=p?"✓":"";b.style.cssText=cellStyle(p);};
   $("#content").querySelectorAll(".fcell").forEach(b=>b.onclick=async()=>{
-    const[mk,ym]=b.dataset.fk.split("|");state.fees[mk]=state.fees[mk]||{};
-    if(state.fees[mk][ym]){delete state.fees[mk][ym];}else{state.fees[mk][ym]=true;}
-    const paid=feePaid(mk,ym);b.textContent=paid?"✓":"";b.style.background=paid?"var(--activeBg)":"#fff";b.style.color=paid?"var(--activeText)":"var(--sub)";
-    recalc();await saveFees();});
+    const mk=b.dataset.mk,i=Number(b.dataset.i),ym=ymOf(i);state.fees[mk]=state.fees[mk]||{};
+    if(state.fees[mk][ym])delete state.fees[mk][ym];else state.fees[mk][ym]=true;
+    paintCell(mk,i);recalc();await saveFees();});
+  $("#content").querySelectorAll(".payall").forEach(b=>b.onclick=async()=>{
+    const mk=b.dataset.mk;const allPaid=rowPaid(mk)===12;state.fees[mk]=state.fees[mk]||{};
+    MONTHS.forEach((_,i)=>{const ym=ymOf(i);if(allPaid)delete state.fees[mk][ym];else state.fees[mk][ym]=true;});
+    MONTHS.forEach((_,i)=>paintCell(mk,i));b.textContent=allPaid?"Pay all":"Clear";recalc();await saveFees();});
 }
 
 /* ============================== reports ============================= */
