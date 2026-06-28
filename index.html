@@ -74,7 +74,7 @@ const MEMBER_TYPES=["Scout","Leader","Senior Leader"];
 const LEADER_ROLES=["GSL","Section Leader","Finance Member","Secretary","Assistant Leader"];
 const sectionMeta=n=>SECTIONS.find(s=>s.name===n)||{color:"#5b6b7b",group:"Group",indiv:"Member"};
 
-let state={institution:"",association:"",patrols:{},rankBadges:{},proficiencyBadges:[],members:[],sessions:{},activities:{},attendanceBonus:2,gslEmail:""};
+let state={institution:"",association:"",patrols:{},rankBadges:{},proficiencyBadges:[],members:[],sessions:{},activities:{},attendanceBonus:2,gslEmail:"",feeMonthly:{Shaheen:20,"Boy Scout":50,Rover:100},fees:{}};
 let currentUser=null,currentRole="scout",canEdit=false,tab="dash";
 function canDelete(){return canEdit&&currentUser&&state.gslEmail&&(currentUser.email||"").toLowerCase()===String(state.gslEmail).toLowerCase();}
 
@@ -109,15 +109,18 @@ async function loadAll(){
     proficiencyBadges:c.proficiencyBadges||[],
     attendanceBonus:c.attendanceBonus!=null?c.attendanceBonus:2,
     gslEmail:c.gslEmail||"",
+    feeMonthly:c.feeMonthly||{Shaheen:20,"Boy Scout":50,Rover:100},
     members:map.members||[],
     sessions:map.sessions||{},
     activities:map.activities||{},
+    fees:map.fees||{},
   };
 }
 async function saveMembers(){const{error}=await sb.from("registry").upsert({key:"members",value:state.members});if(error)toast("Save failed: "+error.message);}
 async function saveSessions(){const{error}=await sb.from("registry").upsert({key:"sessions",value:state.sessions});if(error)toast("Save failed: "+error.message);}
 async function saveActivities(){const{error}=await sb.from("registry").upsert({key:"activities",value:state.activities});if(error)toast("Save failed: "+error.message);}
-async function saveConfig(){const cfg={institution:state.institution,association:state.association,patrols:state.patrols,rankBadges:state.rankBadges,proficiencyBadges:state.proficiencyBadges,attendanceBonus:state.attendanceBonus,gslEmail:state.gslEmail};const{error}=await sb.from("registry").upsert({key:"config",value:cfg});if(error)toast("Save failed: "+error.message);}
+async function saveFees(){const{error}=await sb.from("registry").upsert({key:"fees",value:state.fees});if(error)toast("Save failed: "+error.message);}
+async function saveConfig(){const cfg={institution:state.institution,association:state.association,patrols:state.patrols,rankBadges:state.rankBadges,proficiencyBadges:state.proficiencyBadges,attendanceBonus:state.attendanceBonus,gslEmail:state.gslEmail,feeMonthly:state.feeMonthly};const{error}=await sb.from("registry").upsert({key:"config",value:cfg});if(error)toast("Save failed: "+error.message);}
 
 /* ============================== auth =================================== */
 async function boot(){
@@ -172,7 +175,7 @@ async function logout(){await sb.auth.signOut();currentUser=null;renderAuth();}
 /* ============================== shell ================================= */
 function renderApp(){
   const tabs=[["dash","🏕️ Dashboard"],["members","👥 Members"],["sessions","✅ Attendance & Marks"],["board","🏆 Leaderboard"],["planner","🗓️ Sunday Planner"]];
-  if(canEdit)tabs.push(["reports","📄 Reports"],["settings","⚙️ Settings"]);
+  if(canEdit)tabs.push(["fees","💰 Fees"],["reports","📄 Reports"],["settings","⚙️ Settings"]);
   $("#app").innerHTML=`<div class="wrap">
     <div class="row" style="justify-content:space-between;margin-bottom:6px">
       <div class="row" style="gap:12px"><div class="lead">🛡️</div>
@@ -186,7 +189,7 @@ function renderApp(){
     <div id="content"></div></div>`;
   $("#logoutBtn").onclick=logout;
   $("#tabbar").querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;renderApp();});
-  ({dash:renderDash,members:renderMembers,sessions:renderSessions,board:renderBoard,planner:renderPlanner,reports:renderReports,settings:renderSettings}[tab]||renderDash)();
+  ({dash:renderDash,members:renderMembers,sessions:renderSessions,board:renderBoard,planner:renderPlanner,fees:renderFees,reports:renderReports,settings:renderSettings}[tab]||renderDash)();
 }
 
 /* ============================== dashboard ============================= */
@@ -496,6 +499,11 @@ function renderSettings(){
     <div class="card"><h3>Patrols by section</h3><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">${ed.slice(0,3).map(([id,t])=>listEditor(t,id)).join("")}</div></div>
     <div class="card"><h3>Badge catalogues</h3><p class="muted" style="margin-top:-8px">These autocomplete on a member's badges.</p>
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">${ed.slice(3).map(([id,t])=>listEditor(t,id)).join("")}</div></div>
+    <div class="card"><h3>Fees & dues (monthly, per scout)</h3>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+        ${SECTIONS.map(s=>`<label><span class="lab">${s.name} — Rs / month</span><input class="input fee-in" data-sec="${esc(s.name)}" type="number" value="${Number(state.feeMonthly[s.name])||0}"/></label>`).join("")}
+      </div>
+      <button class="btn btn-primary" id="saveFeeCfg" style="margin-top:12px">💾 Save fees</button></div>
     <div class="card"><h3>Data & backup</h3>
       <div class="row"><button class="btn" id="expCSV">⬇️ Members CSV</button><button class="btn" id="expJSON">⬇️ Full backup (JSON)</button></div>
       <p class="muted" style="margin-bottom:0">Your live data is in the database. This backup is an extra safety copy.</p></div>
@@ -509,6 +517,7 @@ function renderSettings(){
     $("#content").querySelector(`[data-addbtn="${id}"]`).onclick=add;
     $("#content").querySelector(`[data-add="${id}"]`).onkeydown=e=>{if(e.key==="Enter")add();};});
   $("#saveDetails").onclick=async()=>{state.institution=$("#setInst").value;state.association=$("#setAssoc").value;state.attendanceBonus=Number($("#setBonus").value)||0;if(!gslLocked)state.gslEmail=$("#setGsl").value.trim();await saveConfig();toast("Saved");renderApp();};
+  if($("#saveFeeCfg"))$("#saveFeeCfg").onclick=async()=>{$("#content").querySelectorAll(".fee-in").forEach(i=>{state.feeMonthly[i.dataset.sec]=Number(i.value)||0;});await saveConfig();toast("Fees saved");};
   if($("#delSessions"))$("#delSessions").onclick=()=>confirmBox("Delete ALL sessions?","This permanently removes every recorded Sunday and all marks, across all sections.",async()=>{state.sessions={};await saveSessions();renderSettings();toast("All sessions deleted");},"Delete all",true);
   if($("#delActs"))$("#delActs").onclick=()=>confirmBox("Delete ALL activities?","This permanently removes every planned Sunday activity.",async()=>{state.activities={};await saveActivities();renderSettings();toast("All activities deleted");},"Delete all",true);
   $("#expCSV").onclick=()=>{const cols=["id","name","memberType","role","section","patrol","email","contact","dob","joinDate","status"];const e=v=>`"${String(v==null?"":v).replace(/"/g,'""')}"`;const rows=[cols.join(","),...state.members.map(m=>cols.map(c=>e(m[c])).join(","))];download(rows.join("\n"),"ksg_members.csv","text/csv");};
@@ -642,6 +651,44 @@ function openActivity(it){
   };
 }
 
+/* ================================ fees =============================== */
+const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+let fYear=new Date().getFullYear(),fSec="Shaheen";
+function feePaid(mk,ym){return!!(state.fees[mk]&&state.fees[mk][ym]);}
+function renderFees(){
+  const fee=Number(state.feeMonthly[fSec])||0;
+  const scouts=state.members.filter(m=>m.memberType==="Scout"&&m.section===fSec&&m.status==="Active").sort((a,b)=>String(a.patrol).localeCompare(String(b.patrol))||String(a.name).localeCompare(String(b.name)));
+  const ymOf=i=>`${fYear}-${String(i+1).padStart(2,"0")}`;
+  const cell=(mk,i)=>{const paid=feePaid(mk,ymOf(i));return `<td style="padding:4px;text-align:center"><button class="fcell" data-fk="${mk}|${ymOf(i)}" style="width:30px;height:28px;border-radius:6px;border:1px solid var(--line);cursor:pointer;font-size:13px;background:${paid?"var(--activeBg)":"#fff"};color:${paid?"var(--activeText)":"var(--sub)"}">${paid?"✓":""}</button></td>`;};
+  const rowPaid=mk=>MONTHS.reduce((n,_,i)=>n+(feePaid(mk,ymOf(i))?1:0),0);
+  const body=scouts.map(m=>`<tr><td style="padding:6px 10px;font-weight:600;white-space:nowrap">${esc(m.name)}<div class="muted">${esc(m.patrol||"")}</div></td>
+    ${MONTHS.map((_,i)=>cell(m._k,i)).join("")}
+    <td style="padding:6px 10px;text-align:right;white-space:nowrap"><b id="rp_${m._k}">Rs ${rowPaid(m._k)*fee}</b><div class="muted">${rowPaid(m._k)}/12</div></td></tr>`).join("");
+  const collected=scouts.reduce((s,m)=>s+rowPaid(m._k)*fee,0);
+  $("#content").innerHTML=`
+    <div class="card row" style="align-items:flex-end;margin-bottom:14px">
+      <label><span class="lab">Year</span><input id="fY" class="input" type="number" value="${fYear}" style="width:100px"/></label>
+      <label><span class="lab">Section</span><select id="fS" class="input">${SECTIONS.map(s=>`<option ${fSec===s.name?"selected":""}>${s.name}</option>`).join("")}</select></label>
+      <div style="flex:1"></div>
+      <div style="text-align:right"><div class="muted">Monthly fee</div><div style="font-weight:700;font-size:18px">Rs ${fee}</div></div>
+    </div>
+    ${scouts.length?`<div class="tablewrap scrollx"><table style="font-size:13px"><thead><tr>
+      <th style="padding:8px 10px">Scout</th>${MONTHS.map(m=>`<th style="padding:8px 4px;text-align:center">${m}</th>`).join("")}<th style="padding:8px 10px;text-align:right">Paid</th></tr></thead>
+      <tbody>${body}</tbody></table></div>
+      <div class="card" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+        <div><div class="muted">Total collected — ${fSec} ${fYear}</div><div style="font-weight:800;font-size:24px;color:var(--primaryDark)" id="feeTotal">Rs ${collected}</div></div>
+        <div class="muted" style="text-align:right">${scouts.length} scouts · tap a month to mark paid/unpaid</div></div>`
+      :`<div class="card" style="text-align:center;color:var(--sub);padding:40px">No active scouts in ${fSec}.</div>`}`;
+  $("#fY").onchange=e=>{fYear=Number(e.target.value)||fYear;renderFees();};
+  $("#fS").onchange=e=>{fSec=e.target.value;renderFees();};
+  const recalc=()=>{let tot=0;scouts.forEach(m=>{const rp=rowPaid(m._k);tot+=rp*fee;const el=$("#rp_"+m._k);if(el){el.textContent="Rs "+rp*fee;el.nextElementSibling.textContent=rp+"/12";}});$("#feeTotal").textContent="Rs "+tot;};
+  $("#content").querySelectorAll(".fcell").forEach(b=>b.onclick=async()=>{
+    const[mk,ym]=b.dataset.fk.split("|");state.fees[mk]=state.fees[mk]||{};
+    if(state.fees[mk][ym]){delete state.fees[mk][ym];}else{state.fees[mk][ym]=true;}
+    const paid=feePaid(mk,ym);b.textContent=paid?"✓":"";b.style.background=paid?"var(--activeBg)":"#fff";b.style.color=paid?"var(--activeText)":"var(--sub)";
+    recalc();await saveFees();});
+}
+
 /* ============================== reports ============================= */
 let rYear=new Date().getFullYear(),rQ=Math.floor(new Date().getMonth()/3)+1,rMode="quarter",rFrom="",rTo="";
 function quarterRange(y,q){const t=[["01-01","03-31","Jan–Mar"],["04-01","06-30","Apr–Jun"],["07-01","09-30","Jul–Sep"],["10-01","12-31","Oct–Dec"]][q-1];return{from:y+"-"+t[0],to:y+"-"+t[1],label:`Quarter ${q} · ${t[2]} ${y}`};}
@@ -676,6 +723,9 @@ function buildReportBody(rg){
   // activities conducted
   const acts=Object.values(state.activities).filter(a=>inR(a.date)).sort((a,b)=>a.date.localeCompare(b.date));
   const actRows=acts.map(a=>`<tr><td style="${td}">${fmtDate(a.date)}</td><td style="${td}">${(a.items||[]).map(i=>esc((i.section&&i.section!=="All"?"["+i.section+"] ":"")+i.title)).join("; ")||"—"}</td></tr>`).join("");
+  // fees collected in range
+  const fromYM=rg.from?rg.from.slice(0,7):"0000-00",toYM=rg.to?rg.to.slice(0,7):"9999-99";
+  let feeTotal=0;const feeRows=SECTIONS.map(s=>{const fee=Number(state.feeMonthly[s.name])||0;const sc=state.members.filter(m=>m.memberType==="Scout"&&m.section===s.name);let col=0;sc.forEach(m=>{const f=state.fees[m._k]||{};Object.keys(f).forEach(ym=>{if(f[ym]&&ym>=fromYM&&ym<=toYM)col+=fee;});});feeTotal+=col;return `<tr><td style="${td}">${s.name}</td><td style="${td}">Rs ${fee}/mo</td><td style="${td}">Rs ${col}</td></tr>`;}).join("");
   return `
     <h1 style="margin:0;font-size:20px">${esc(state.institution)}</h1>
     <div style="color:#555;font-size:13px">${esc(state.association)}</div>
@@ -690,6 +740,8 @@ function buildReportBody(rg){
     ${bRows.length?`<table style="border-collapse:collapse;width:100%"><tr><th style="${th}">Date</th><th style="${th}">Member</th><th style="${th}">Section</th><th style="${th}">Type</th><th style="${th}">Badge</th></tr>${bRows.join("")}</table>`:`<p style="font-size:12px;color:#555">None recorded in this period.</p>`}
     <h3 style="margin:18px 0 6px;color:#0a574e">4. Sunday activities conducted</h3>
     ${acts.length?`<table style="border-collapse:collapse;width:100%"><tr><th style="${th}">Date</th><th style="${th}">Activities</th></tr>${actRows}</table>`:`<p style="font-size:12px;color:#555">No activities logged in this period.</p>`}
+    <h3 style="margin:18px 0 6px;color:#0a574e">5. Fees collected this period</h3>
+    <table style="border-collapse:collapse;width:100%"><tr><th style="${th}">Section</th><th style="${th}">Monthly fee</th><th style="${th}">Collected</th></tr>${feeRows}<tr><td style="${td}"><b>Total</b></td><td style="${td}"></td><td style="${td}"><b>Rs ${feeTotal}</b></td></tr></table>
     <div style="margin-top:24px;font-size:12px;color:#555">Group Scout Leader: __________________________   Signature: __________________________</div>`;
 }
 function reportDoc(body){return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>KSG Report</title>
