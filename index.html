@@ -74,8 +74,9 @@ const MEMBER_TYPES=["Scout","Leader","Senior Leader"];
 const LEADER_ROLES=["GSL","Section Leader","Finance Member","Secretary","Assistant Leader"];
 const sectionMeta=n=>SECTIONS.find(s=>s.name===n)||{color:"#5b6b7b",group:"Group",indiv:"Member"};
 
-let state={institution:"",association:"",patrols:{},rankBadges:{},proficiencyBadges:[],members:[],sessions:{},activities:{}};
+let state={institution:"",association:"",patrols:{},rankBadges:{},proficiencyBadges:[],members:[],sessions:{},activities:{},attendanceBonus:2,gslEmail:""};
 let currentUser=null,currentRole="scout",canEdit=false,tab="dash";
+function canDelete(){return canEdit&&currentUser&&state.gslEmail&&(currentUser.email||"").toLowerCase()===String(state.gslEmail).toLowerCase();}
 
 /* ----------------------------- helpers -------------------------------- */
 const $=s=>document.querySelector(s);
@@ -88,6 +89,11 @@ function nextId(){let m=0;state.members.forEach(x=>{const n=parseInt(String(x.id
 function uid(){return Date.now()+"."+Math.floor(Math.random()*1e6);}
 function toast(t){let e=document.createElement("div");e.className="toast";e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),2200);}
 function download(text,name,type){const b=new Blob([text],{type});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
+function confirmBox(title,msg,onYes,yesLabel,danger){const bg=document.createElement("div");bg.className="modal-bg";
+  bg.innerHTML=`<div class="modal" style="max-width:400px;text-align:center"><div style="font-size:26px;margin-bottom:6px">${danger?"🗑️":"❓"}</div><h3>${esc(title)}</h3><p class="muted" style="margin:6px 0 18px">${esc(msg)}</p><div class="row" style="justify-content:center"><button class="btn" id="cbno">Cancel</button><button class="btn ${danger?"btn-danger":"btn-primary"}" id="cbyes">${esc(yesLabel||"Confirm")}</button></div></div>`;
+  document.body.appendChild(bg);bg.onclick=e=>{if(e.target===bg)bg.remove();};
+  bg.querySelector("#cbno").onclick=()=>bg.remove();
+  bg.querySelector("#cbyes").onclick=async()=>{await onYes();bg.remove();};}
 
 /* ----------------------------- data i/o ------------------------------- */
 async function loadAll(){
@@ -101,6 +107,8 @@ async function loadAll(){
     patrols:c.patrols||{Shaheen:[],"Boy Scout":[],Rover:[]},
     rankBadges:c.rankBadges||{Shaheen:[],"Boy Scout":[],Rover:[]},
     proficiencyBadges:c.proficiencyBadges||[],
+    attendanceBonus:c.attendanceBonus!=null?c.attendanceBonus:2,
+    gslEmail:c.gslEmail||"",
     members:map.members||[],
     sessions:map.sessions||{},
     activities:map.activities||{},
@@ -109,7 +117,7 @@ async function loadAll(){
 async function saveMembers(){const{error}=await sb.from("registry").upsert({key:"members",value:state.members});if(error)toast("Save failed: "+error.message);}
 async function saveSessions(){const{error}=await sb.from("registry").upsert({key:"sessions",value:state.sessions});if(error)toast("Save failed: "+error.message);}
 async function saveActivities(){const{error}=await sb.from("registry").upsert({key:"activities",value:state.activities});if(error)toast("Save failed: "+error.message);}
-async function saveConfig(){const cfg={institution:state.institution,association:state.association,patrols:state.patrols,rankBadges:state.rankBadges,proficiencyBadges:state.proficiencyBadges};const{error}=await sb.from("registry").upsert({key:"config",value:cfg});if(error)toast("Save failed: "+error.message);}
+async function saveConfig(){const cfg={institution:state.institution,association:state.association,patrols:state.patrols,rankBadges:state.rankBadges,proficiencyBadges:state.proficiencyBadges,attendanceBonus:state.attendanceBonus,gslEmail:state.gslEmail};const{error}=await sb.from("registry").upsert({key:"config",value:cfg});if(error)toast("Save failed: "+error.message);}
 
 /* ============================== auth =================================== */
 async function boot(){
@@ -192,12 +200,13 @@ function renderDash(){
   if(latest){winners=SECTIONS.map(s=>{
     const sess=state.sessions[latest+"|"+s.name];if(!sess)return"";
     const rows=Object.entries(sess.records).map(([k,v])=>({m:state.members.find(x=>x._k==k),...v})).filter(r=>r.m&&r.m.memberType==="Scout");
-    const ts=[...rows].sort((a,b)=>(b.points||0)-(a.points||0))[0];
+    const bonus=Number(state.attendanceBonus)||0;
+    const ts=[...rows].map(r=>({...r,score:(Number(r.points)||0)+(r.present?bonus:0)})).sort((a,b)=>b.score-a.score)[0];
     const pp=sess.patrolPoints||{};
     const tp=Object.entries(pp).sort((a,b)=>b[1]-a[1])[0];
     return`<div style="border:1px solid var(--line);border-radius:10px;padding:12px">
       <div style="font-weight:700;color:${s.color};margin-bottom:6px">${s.name}</div>
-      <div style="font-size:13px">⭐ Best ${s.indiv}: <b>${esc(ts&&ts.m?ts.m.name:"—")}</b> ${ts?`(${ts.points||0})`:""}</div>
+      <div style="font-size:13px">⭐ Best ${s.indiv}: <b>${esc(ts&&ts.m?ts.m.name:"—")}</b> ${ts?`(${ts.score})`:""}</div>
       <div style="font-size:13px;margin-top:4px">🏅 Best ${s.group}: <b>${esc(tp?tp[0]:"—")}</b> ${tp?`(${tp[1]})`:""}</div></div>`;
   }).join("");}
   $("#content").innerHTML=`
@@ -232,7 +241,7 @@ function membersRows(){const list=filteredMembers();
       <td style="color:var(--sub)">${age==null?"—":age}</td>
       <td style="color:var(--sub);white-space:nowrap">🏅 ${(m.rankBadges||[]).length} &nbsp; 🎖️ ${(m.proficiencyBadges||[]).length}</td>
       <td><span class="pill" style="background:${m.status==="Active"?"var(--activeBg)":"var(--offBg)"};color:${m.status==="Active"?"var(--activeText)":"var(--offText)"}">${esc(m.status)}</span></td>
-      <td style="text-align:right;white-space:nowrap">${canEdit?`<button class="icon-btn" data-edit="${m._k}">✏️</button><button class="icon-btn" data-del="${m._k}">🗑️</button>`:""}</td></tr>`;}).join("");}
+      <td style="text-align:right;white-space:nowrap">${canEdit?`<button class="icon-btn" data-edit="${m._k}">✏️</button>`:""}${canDelete()?`<button class="icon-btn" data-del="${m._k}">🗑️</button>`:""}</td></tr>`;}).join("");}
 function renderMembers(){
   $("#content").innerHTML=`
     <div class="row" style="margin-bottom:14px">
@@ -255,7 +264,7 @@ function wireRows(){
   $("#mBody").querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openMember(state.members.find(m=>m._k==b.dataset.edit)));
   $("#mBody").querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>confirmDel(state.members.find(m=>m._k==b.dataset.del)));}
 
-function memberStats(m){let pts=0,present=0,held=0;Object.values(state.sessions).forEach(s=>{const r=s.records&&s.records[m._k];if(r){held++;pts+=Number(r.points)||0;if(r.present)present++;}});return{pts,present,held,pct:held?Math.round(present/held*100):null};}
+function memberStats(m){const bonus=Number(state.attendanceBonus)||0;let marks=0,present=0,held=0;Object.values(state.sessions).forEach(s=>{const r=s.records&&s.records[m._k];if(r){held++;marks+=Number(r.points)||0;if(r.present)present++;}});const pts=marks+present*bonus;return{pts,marks,bonusTotal:present*bonus,present,held,pct:held?Math.round(present/held*100):null};}
 function openMemberView(m){
   if(!m)return;const age=m.dob?ageFrom(m.dob):m.manualAge;const meta=sectionMeta(m.section);const st=memberStats(m);
   const badgeList=(arr,empty)=>arr&&arr.length?arr.map(b=>`<div class="row" style="justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line)"><span>${esc(b.name||"—")}</span><span class="muted">${b.date?fmtDate(b.date):""}</span></div>`).join(""):`<div class="muted" style="padding:4px 0">${empty}</div>`;
@@ -273,6 +282,7 @@ function openMemberView(m){
       <div class="card" style="text-align:center;padding:12px"><div class="stat-v" style="font-size:22px">${st.pts}</div><div class="muted">Total marks</div></div>
       <div class="card" style="text-align:center;padding:12px"><div class="stat-v" style="font-size:22px">${st.pct==null?"—":st.pct+"%"}</div><div class="muted">Attendance</div></div>
       <div class="card" style="text-align:center;padding:12px"><div class="stat-v" style="font-size:22px">${st.present}/${st.held}</div><div class="muted">Present</div></div></div>
+    <div class="muted" style="margin-bottom:14px;text-align:center">Total = ${st.marks} competition marks + ${st.bonusTotal} attendance bonus (${Number(state.attendanceBonus)||0} per Sunday present)</div>
     <div style="margin-bottom:12px">
       ${fieldRow("Age",age==null?"":age)}
       ${fieldRow("Date of birth",m.dob?fmtDate(m.dob):"")}
@@ -385,6 +395,7 @@ function renderSessions(){
         <label style="flex:1;min-width:160px"><span class="lab">Activity / competition (optional)</span><input id="sAct" class="input" value="${esc(sAct)}" placeholder="e.g. Knot relay, Drill" ${canEdit?"":"disabled"}/></label>
         <div class="muted" id="sCount"></div>
         ${canEdit?`<button class="btn btn-primary" id="sSave">💾 Save session</button>`:""}
+        ${canDelete()&&existing?`<button class="btn btn-danger" id="sDel">🗑️ Delete</button>`:""}
       </div>
     </div>
     ${all.length?`<div class="tablewrap scrollx" style="margin-bottom:14px"><table><thead><tr>${["Name","Patrol / Type","Present","Marks"].map(h=>`<th>${h}</th>`).join("")}</tr></thead>
@@ -397,7 +408,7 @@ function renderSessions(){
         ${patrols.map(p=>`<label style="border:1px solid var(--line);border-radius:10px;padding:10px"><span class="lab">${esc(p)}</span>
           <input class="input" type="number" data-pp="${esc(p)}" placeholder="0" value="${sPat[p]}" ${canEdit?"":"disabled"}/></label>`).join("")}
       </div></div>`:""}
-    <div class="muted" style="margin-top:10px">Individual marks feed Best ${sectionMeta(sSec).indiv}. ${gLabel} team marks feed Best ${gLabel}.</div>`;
+    <div class="muted" style="margin-top:10px">Each scout marked <b>present</b> automatically gets +${Number(state.attendanceBonus)||0} on their individual score. Individual marks feed Best ${sectionMeta(sSec).indiv}. ${gLabel} team marks feed Best ${gLabel}.</div>`;
   const refresh=()=>{const p=Object.values(sDraft).filter(v=>v.present).length;$("#sCount").textContent=`${p}/${all.length} present`+(existing?" · saved":"");};
   const paint=()=>{$("#content").querySelectorAll(".pres").forEach(b=>{const on=sDraft[b.dataset.pk].present;b.textContent=on?"Present":"Absent";b.style.background=on?"var(--activeBg)":"var(--offBg)";b.style.color=on?"var(--activeText)":"var(--offText)";b.style.border="none";});};
   $("#sD").onchange=e=>{sDate=e.target.value;renderSessions();};
@@ -413,15 +424,20 @@ function renderSessions(){
       state.sessions[sDate+"|"+sSec]={date:sDate,section:sSec,activity:sAct,records,patrolPoints};
       await saveSessions();toast("Session saved");renderSessions();};
   }
+  if(canDelete()&&existing&&$("#sDel"))$("#sDel").onclick=()=>confirmBox("Delete this session?",`Removes ${sSec} on ${fmtDate(sDate)}${sAct?' ('+sAct+')':''} and all its marks.`,async()=>{delete state.sessions[sDate+"|"+sSec];await saveSessions();renderSessions();toast("Session deleted");},"Delete",true);
   paint();refresh();
 }
 
 /* ============================ leaderboard ============================ */
-let bSec="Shaheen",bFrom="",bTo="";
+let bSec="Shaheen",bFrom="",bTo="",bComp="All";
 function renderBoard(){
-  const sessions=Object.values(state.sessions).filter(s=>s.section===bSec).filter(s=>(!bFrom||s.date>=bFrom)&&(!bTo||s.date<=bTo));
+  const sessionsAll=Object.values(state.sessions).filter(s=>s.section===bSec).filter(s=>(!bFrom||s.date>=bFrom)&&(!bTo||s.date<=bTo));
+  const comps=[...new Set(sessionsAll.map(s=>s.activity||""))];
+  if(bComp!=="All"&&!comps.includes(bComp))bComp="All";
+  const sessions=bComp==="All"?sessionsAll:sessionsAll.filter(s=>(s.activity||"")===bComp);
   const scouts=state.members.filter(m=>m.memberType==="Scout"&&m.section===bSec);
-  const stat=scouts.map(m=>{let pts=0,pres=0;sessions.forEach(s=>{const r=s.records[m._k];if(r){pts+=Number(r.points)||0;if(r.present)pres++;}});return{m,pts,pres,held:sessions.length};});
+  const bonus=Number(state.attendanceBonus)||0;
+  const stat=scouts.map(m=>{let pts=0,pres=0;sessions.forEach(s=>{const r=s.records[m._k];if(r){pts+=Number(r.points)||0;if(r.present){pres++;pts+=bonus;}}});return{m,pts,pres,held:sessions.length};});
   const bestScouts=[...stat].sort((a,b)=>b.pts-a.pts);
   const counts={};(state.patrols[bSec]||[]).forEach(p=>counts[p]=0);
   scouts.forEach(m=>{if(m.patrol){counts[m.patrol]=(counts[m.patrol]||0)+1;}});
@@ -439,13 +455,15 @@ function renderBoard(){
   $("#content").innerHTML=`
     <div class="row" style="align-items:flex-end;margin-bottom:16px">
       <label><span class="lab">Section</span><select id="bS" class="input">${SECTIONS.map(s=>`<option ${bSec===s.name?"selected":""}>${s.name}</option>`).join("")}</select></label>
+      <label><span class="lab">Competition</span><select id="bC" class="input" style="min-width:160px"><option value="All" ${bComp==="All"?"selected":""}>All competitions</option>${comps.map(c=>`<option value="${esc(c)}" ${bComp===c?"selected":""}>${esc(c||"(unnamed session)")}</option>`).join("")}</select></label>
       <label><span class="lab">From</span><input id="bF" class="input" type="date" value="${bFrom}"/></label>
       <label><span class="lab">To</span><input id="bT" class="input" type="date" value="${bTo}"/></label>
-      <div class="muted" style="padding-bottom:9px">${sessions.length} session(s)</div></div>
+      <div class="muted" style="padding-bottom:9px">${sessions.length} session(s)${bComp!=="All"?` · ${esc(bComp||"unnamed")}`:""}</div></div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
       <div class="tablewrap"><div style="padding:13px 16px;border-bottom:1px solid var(--line);font-weight:700">⭐ Best ${sectionMeta(bSec).indiv} — individual</div><div>${bestScouts.length&&maxI>0?bestScouts.map((r,i)=>row(i,r.m.name,`${r.m.patrol||"—"} · present ${r.pres}/${r.held}`,r.pts,maxI,"var(--primary)")).join(""):empty}</div></div>
       <div class="tablewrap"><div style="padding:13px 16px;border-bottom:1px solid var(--line);font-weight:700">🏅 Best ${sectionMeta(bSec).group} — team</div><div>${bestPatrols.length&&maxP>0?bestPatrols.map((p,i)=>row(i,p.name,`${p.count} scout(s)`,p.pts,maxP,"var(--amber)")).join(""):empty}</div></div></div>`;
-  $("#bS").onchange=e=>{bSec=e.target.value;renderBoard();};
+  $("#bS").onchange=e=>{bSec=e.target.value;bComp="All";renderBoard();};
+  $("#bC").onchange=e=>{bComp=e.target.value;renderBoard();};
   $("#bF").onchange=e=>{bFrom=e.target.value;renderBoard();};
   $("#bT").onchange=e=>{bTo=e.target.value;renderBoard();};
 }
@@ -467,24 +485,32 @@ function renderSettings(){
     ["prof","Proficiency badges (all sections)",()=>state.proficiencyBadges,v=>state.proficiencyBadges=v],
   ];
   const g={},s={};ed.forEach(([id,,gg,ss])=>{g[id]=gg;s[id]=ss;});
+  const gslLocked=!!state.gslEmail&&!canDelete();
   $("#content").innerHTML=`<div class="grid" style="gap:16px">
     <div class="card"><h3>Group details</h3><div class="grid" style="gap:12px">
       <label><span class="lab">Institution name</span><input id="setInst" class="input" value="${esc(state.institution)}"/></label>
       <label><span class="lab">Association</span><input id="setAssoc" class="input" value="${esc(state.association)}"/></label>
+      <label><span class="lab">Attendance bonus — marks added to a scout's individual score for each Sunday present</span><input id="setBonus" class="input" type="number" value="${Number(state.attendanceBonus)||0}"/></label>
+      <label><span class="lab">GSL login email — only this account can delete sessions, members & activities${gslLocked?" (locked — set by GSL)":""}</span><input id="setGsl" class="input" value="${esc(state.gslEmail||"")}" placeholder="gsl@email.com" ${gslLocked?"disabled":""}/></label>
       <button class="btn btn-primary" id="saveDetails" style="justify-self:start">💾 Save details</button></div></div>
     <div class="card"><h3>Patrols by section</h3><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">${ed.slice(0,3).map(([id,t])=>listEditor(t,id)).join("")}</div></div>
     <div class="card"><h3>Badge catalogues</h3><p class="muted" style="margin-top:-8px">These autocomplete on a member's badges.</p>
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">${ed.slice(3).map(([id,t])=>listEditor(t,id)).join("")}</div></div>
     <div class="card"><h3>Data & backup</h3>
       <div class="row"><button class="btn" id="expCSV">⬇️ Members CSV</button><button class="btn" id="expJSON">⬇️ Full backup (JSON)</button></div>
-      <p class="muted" style="margin-bottom:0">Your live data is in the database. This backup is an extra safety copy.</p></div></div>`;
+      <p class="muted" style="margin-bottom:0">Your live data is in the database. This backup is an extra safety copy.</p></div>
+    ${canDelete()?`<div class="card" style="border-color:#f0c8c4"><h3 style="color:var(--danger)">Danger zone — GSL only</h3>
+      <div class="row"><button class="btn btn-danger" id="delSessions">🗑️ Delete ALL sessions & marks</button><button class="btn btn-danger" id="delActs">🗑️ Delete ALL planned activities</button></div>
+      <p class="muted" style="margin-bottom:0">Wipes every recorded Sunday (across all sections) or the whole planner. Useful for clearing test data. Members and badges are kept.</p></div>`:""}</div>`;
   const paintTags=()=>{ed.forEach(([id,,gg])=>{const box=$("#tags_"+id);box.innerHTML=gg().length?gg().map(it=>`<span class="tag">${esc(it)}<button class="icon-btn" data-rm="${id}::${esc(it)}" style="padding:0;color:var(--danger)">✕</button></span>`).join(""):'<span class="muted">None yet.</span>';
     box.querySelectorAll("[data-rm]").forEach(b=>b.onclick=async()=>{const idx=b.dataset.rm.indexOf("::");const k=b.dataset.rm.slice(0,idx),val=b.dataset.rm.slice(idx+2);s[k](g[k]().filter(x=>x!==val));await saveConfig();paintTags();});});};
   paintTags();
   ed.forEach(([id])=>{const add=async()=>{const inp=$("#content").querySelector(`[data-add="${id}"]`);const v=inp.value.trim();if(v&&!g[id]().includes(v)){s[id]([...g[id](),v]);await saveConfig();inp.value="";paintTags();}};
     $("#content").querySelector(`[data-addbtn="${id}"]`).onclick=add;
     $("#content").querySelector(`[data-add="${id}"]`).onkeydown=e=>{if(e.key==="Enter")add();};});
-  $("#saveDetails").onclick=async()=>{state.institution=$("#setInst").value;state.association=$("#setAssoc").value;await saveConfig();toast("Saved");renderApp();};
+  $("#saveDetails").onclick=async()=>{state.institution=$("#setInst").value;state.association=$("#setAssoc").value;state.attendanceBonus=Number($("#setBonus").value)||0;if(!gslLocked)state.gslEmail=$("#setGsl").value.trim();await saveConfig();toast("Saved");renderApp();};
+  if($("#delSessions"))$("#delSessions").onclick=()=>confirmBox("Delete ALL sessions?","This permanently removes every recorded Sunday and all marks, across all sections.",async()=>{state.sessions={};await saveSessions();renderSettings();toast("All sessions deleted");},"Delete all",true);
+  if($("#delActs"))$("#delActs").onclick=()=>confirmBox("Delete ALL activities?","This permanently removes every planned Sunday activity.",async()=>{state.activities={};await saveActivities();renderSettings();toast("All activities deleted");},"Delete all",true);
   $("#expCSV").onclick=()=>{const cols=["id","name","memberType","role","section","patrol","email","contact","dob","joinDate","status"];const e=v=>`"${String(v==null?"":v).replace(/"/g,'""')}"`;const rows=[cols.join(","),...state.members.map(m=>cols.map(c=>e(m[c])).join(","))];download(rows.join("\n"),"ksg_members.csv","text/csv");};
   $("#expJSON").onclick=()=>download(JSON.stringify(state,null,2),"ksg_backup.json","application/json");
 }
@@ -511,7 +537,7 @@ function renderPlanner(){
             <span style="font-weight:700">${esc(it.title)}</span></div>
             ${it.detail?`<div style="margin-top:6px;font-size:13px">${esc(it.detail)}</div>`:""}
             ${it.lead?`<div class="muted" style="margin-top:4px">In charge: ${esc(it.lead)}</div>`:""}</div>
-          ${canEdit?`<div style="white-space:nowrap"><button class="icon-btn" data-pe="${it.id}">✏️</button><button class="icon-btn" data-pd="${it.id}">🗑️</button></div>`:""}
+          ${canEdit?`<div style="white-space:nowrap"><button class="icon-btn" data-pe="${it.id}">✏️</button>${canDelete()?`<button class="icon-btn" data-pd="${it.id}">🗑️</button>`:""}</div>`:""}
         </div></div>`;
       const block=(label,color,list)=>list.length?`<div style="margin:4px 0 8px;font-weight:700;color:${color}">${label}</div><div class="grid" style="gap:10px;margin-bottom:18px">${list.map(card).join("")}</div>`:"";
       let out=block("🎯 Group activity — all sections","var(--amber)",items.filter(it=>!it.section||it.section==="All"));
