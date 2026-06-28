@@ -663,7 +663,7 @@ function renderFees(){
   const rowPaid=mk=>MONTHS.reduce((n,_,i)=>n+(feePaid(mk,ymOf(i))?1:0),0);
   const body=scouts.map(m=>`<tr><td style="padding:6px 10px;font-weight:600;white-space:nowrap">${esc(m.name)}<div class="muted">${esc(m.patrol||"")}</div></td>
     ${MONTHS.map((_,i)=>cell(m._k,i)).join("")}
-    <td style="padding:6px 10px;text-align:right;white-space:nowrap"><b id="rp_${m._k}">Rs ${rowPaid(m._k)*fee}</b><div class="muted">${rowPaid(m._k)}/12</div></td></tr>`).join("");
+    <td style="padding:6px 10px;text-align:right;white-space:nowrap"><b id="rp_${m._k}">Rs ${rowPaid(m._k)*fee}</b><div class="muted" id="rc_${m._k}">${rowPaid(m._k)}/12</div></td></tr>`).join("");
   const collected=scouts.reduce((s,m)=>s+rowPaid(m._k)*fee,0);
   $("#content").innerHTML=`
     <div class="card row" style="align-items:flex-end;margin-bottom:14px">
@@ -681,7 +681,7 @@ function renderFees(){
       :`<div class="card" style="text-align:center;color:var(--sub);padding:40px">No active scouts in ${fSec}.</div>`}`;
   $("#fY").onchange=e=>{fYear=Number(e.target.value)||fYear;renderFees();};
   $("#fS").onchange=e=>{fSec=e.target.value;renderFees();};
-  const recalc=()=>{let tot=0;scouts.forEach(m=>{const rp=rowPaid(m._k);tot+=rp*fee;const el=$("#rp_"+m._k);if(el){el.textContent="Rs "+rp*fee;el.nextElementSibling.textContent=rp+"/12";}});$("#feeTotal").textContent="Rs "+tot;};
+  const recalc=()=>{let tot=0;scouts.forEach(m=>{const rp=MONTHS.reduce((n,_,i)=>n+(feePaid(m._k,ymOf(i))?1:0),0);tot+=rp*fee;const el=$("#rp_"+m._k);if(el)el.textContent="Rs "+rp*fee;const ec=$("#rc_"+m._k);if(ec)ec.textContent=rp+"/12";});const ft=$("#feeTotal");if(ft)ft.textContent="Rs "+tot;};
   $("#content").querySelectorAll(".fcell").forEach(b=>b.onclick=async()=>{
     const[mk,ym]=b.dataset.fk.split("|");state.fees[mk]=state.fees[mk]||{};
     if(state.fees[mk][ym]){delete state.fees[mk][ym];}else{state.fees[mk][ym]=true;}
