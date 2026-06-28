@@ -527,6 +527,7 @@ function renderPlanner(){
     <div class="card row" style="align-items:flex-end;margin-bottom:14px">
       <label><span class="lab">Sunday date</span><input id="pD" class="input" type="date" value="${pDate}"/></label>
       <div style="flex:1"></div>
+      <button class="btn" id="waAll" style="background:#25D366;color:#fff;border:none">📲 Send whole plan</button>
       ${canEdit?`<button class="btn btn-primary" id="pAdd">＋ Add activity</button>`:""}</div>
     ${(function(){
       if(!items.length)return `<div class="card" style="text-align:center;color:var(--sub);padding:36px">No activities planned for ${fmtDate(pDate)} yet.${canEdit?" Click “Add activity”.":""}</div>`;
@@ -539,19 +540,43 @@ function renderPlanner(){
             ${it.lead?`<div class="muted" style="margin-top:4px">In charge: ${esc(it.lead)}</div>`:""}</div>
           ${canEdit?`<div style="white-space:nowrap"><button class="icon-btn" data-pe="${it.id}">✏️</button>${canDelete()?`<button class="icon-btn" data-pd="${it.id}">🗑️</button>`:""}</div>`:""}
         </div></div>`;
-      const block=(label,color,list)=>list.length?`<div style="margin:4px 0 8px;font-weight:700;color:${color}">${label}</div><div class="grid" style="gap:10px;margin-bottom:18px">${list.map(card).join("")}</div>`:"";
-      let out=block("🎯 Group activity — all sections","var(--amber)",items.filter(it=>!it.section||it.section==="All"));
-      SECTIONS.forEach(s=>{out+=block(s.name,s.color,items.filter(it=>it.section===s.name));});
+      const head=(label,color,scope)=>`<div class="row" style="justify-content:space-between;margin:4px 0 8px"><span style="font-weight:700;color:${color}">${label}</span>${scope?`<button class="btn" data-wa="${esc(scope)}" style="background:#25D366;color:#fff;border:none;padding:4px 10px;font-size:12.5px">📲 Send to ${esc(scope)} group</button>`:""}</div>`;
+      const block=(label,color,list,scope)=>list.length?head(label,color,scope)+`<div class="grid" style="gap:10px;margin-bottom:18px">${list.map(card).join("")}</div>`:"";
+      let out=block("🎯 Group activity — all sections","var(--amber)",items.filter(it=>!it.section||it.section==="All"),null);
+      SECTIONS.forEach(s=>{out+=block(s.name,s.color,items.filter(it=>it.section===s.name),s.name);});
       return out;
     })()}
     ${upcoming.length?`<div class="muted" style="margin-top:14px">Other planned Sundays: ${upcoming.map(d=>`<a href="#" data-jump="${d}">${fmtDate(d)}</a>`).join(" · ")}</div>`:""}`;
   $("#pD").onchange=e=>{pDate=e.target.value;renderPlanner();};
   $("#content").querySelectorAll("[data-jump]").forEach(a=>a.onclick=e=>{e.preventDefault();pDate=a.dataset.jump;renderPlanner();});
+  $("#waAll").onclick=()=>sendWhatsApp("all");
+  $("#content").querySelectorAll("[data-wa]").forEach(b=>b.onclick=()=>sendWhatsApp(b.dataset.wa));
   if(canEdit){
     if($("#pAdd"))$("#pAdd").onclick=()=>openActivity(null);
     $("#content").querySelectorAll("[data-pe]").forEach(b=>b.onclick=()=>openActivity(plannerItems().find(x=>x.id==b.dataset.pe)));
     $("#content").querySelectorAll("[data-pd]").forEach(b=>b.onclick=async()=>{const d=state.activities[pDate];d.items=d.items.filter(x=>x.id!=b.dataset.pd);if(!d.items.length)delete state.activities[pDate];await saveActivities();renderPlanner();toast("Removed");});
   }
+}
+function planMessage(scope){
+  const items=[...plannerItems()].sort((a,b)=>String(a.time).localeCompare(String(b.time)));
+  const group=items.filter(it=>!it.section||it.section==="All");
+  const fmtItem=it=>{let l=`• ${it.time?it.time+" ":""}${it.title}`;if(it.detail)l+=`\n   ${it.detail}`;if(it.lead)l+=`\n   👤 In charge: ${it.lead}`;return l;};
+  const lines=[];
+  if(scope==="all"){
+    lines.push(`*${state.institution}*`,`🗓️ Sunday Plan — ${fmtDate(pDate)}`);
+    const add=(label,list)=>{if(list.length){lines.push("",`*${label}*`);list.forEach(it=>lines.push(fmtItem(it)));}};
+    add("🎯 Group — all sections",group);
+    SECTIONS.forEach(s=>add(s.name,items.filter(it=>it.section===s.name)));
+  }else{
+    lines.push(`*${state.institution} — ${scope} Section*`,`🗓️ Sunday Plan — ${fmtDate(pDate)}`,"");
+    items.filter(it=>it.section===scope).forEach(it=>lines.push(fmtItem(it)));
+    if(group.length){lines.push("","*For all sections:*");group.forEach(it=>lines.push(fmtItem(it)));}
+  }
+  return lines.join("\n");
+}
+function sendWhatsApp(scope){
+  if(!plannerItems().length)return toast("No activities to send");
+  window.open("https://wa.me/?text="+encodeURIComponent(planMessage(scope)),"_blank");
 }
 function openActivity(it){
   const isEdit=!!it;const f=it?{...it}:{id:uid(),time:"",title:"",detail:"",lead:"",section:"All"};
