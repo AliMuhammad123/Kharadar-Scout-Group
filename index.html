@@ -193,8 +193,8 @@ function renderDash(){
     const sess=state.sessions[latest+"|"+s.name];if(!sess)return"";
     const rows=Object.entries(sess.records).map(([k,v])=>({m:state.members.find(x=>x._k==k),...v})).filter(r=>r.m&&r.m.memberType==="Scout");
     const ts=[...rows].sort((a,b)=>(b.points||0)-(a.points||0))[0];
-    const bp={};rows.forEach(r=>{const p=r.m.patrol||"—";bp[p]=(bp[p]||0)+(Number(r.points)||0);});
-    const tp=Object.entries(bp).sort((a,b)=>b[1]-a[1])[0];
+    const pp=sess.patrolPoints||{};
+    const tp=Object.entries(pp).sort((a,b)=>b[1]-a[1])[0];
     return`<div style="border:1px solid var(--line);border-radius:10px;padding:12px">
       <div style="font-weight:700;color:${s.color};margin-bottom:6px">${s.name}</div>
       <div style="font-size:13px">⭐ Best ${s.indiv}: <b>${esc(ts&&ts.m?ts.m.name:"—")}</b> ${ts?`(${ts.points||0})`:""}</div>
@@ -357,13 +357,16 @@ function confirmDel(m){const bg=document.createElement("div");bg.className="moda
   bg.querySelector("#d").onclick=async()=>{state.members=state.members.filter(x=>x._k!==m._k);await saveMembers();bg.remove();renderMembers();toast("Member removed");};}
 
 /* ========================== attendance/marks ========================= */
-let sDate=lastSunday(),sSec="Shaheen",sDraft={};
+let sDate=lastSunday(),sSec="Shaheen",sDraft={},sPat={},sAct="";
 function scoutRoster(){return state.members.filter(m=>m.memberType==="Scout"&&m.section===sSec&&m.status==="Active").sort((a,b)=>String(a.patrol).localeCompare(String(b.patrol))||String(a.name).localeCompare(String(b.name)));}
 function leaderRoster(){return state.members.filter(m=>m.memberType!=="Scout"&&m.section===sSec&&m.status==="Active").sort((a,b)=>String(a.name).localeCompare(String(b.name)));}
 function renderSessions(){
   const scouts=scoutRoster(),leaders=leaderRoster(),all=[...scouts,...leaders];
   const existing=state.sessions[sDate+"|"+sSec];
+  const patrols=state.patrols[sSec]||[];const gLabel=sectionMeta(sSec).group;
   sDraft={};all.forEach(m=>{const r=existing&&existing.records[m._k];sDraft[m._k]={present:r?r.present:true,points:r?r.points:""};});
+  sPat={};patrols.forEach(p=>{sPat[p]=existing&&existing.patrolPoints&&existing.patrolPoints[p]!=null?existing.patrolPoints[p]:"";});
+  sAct=existing&&existing.activity?existing.activity:"";
   const presBtn=m=>`<button class="btn pres" data-pk="${m._k}" ${canEdit?"":"disabled"} style="padding:5px 13px;font-size:13px"></button>`;
   const scoutRow=m=>`<tr><td style="font-weight:600">${esc(m.name)}</td><td style="color:var(--sub)">${esc(m.patrol||"—")}</td>
     <td>${presBtn(m)}</td><td><input class="input" type="number" data-mk="${m._k}" placeholder="0" style="width:80px;padding:6px 9px" value="${sDraft[m._k].points}" ${canEdit?"":"disabled"}/></td></tr>`;
@@ -371,27 +374,44 @@ function renderSessions(){
     <td style="color:var(--sub)">${esc(m.memberType)}</td><td>${presBtn(m)}</td><td style="color:var(--sub)">—</td></tr>`;
   const subhead=t=>`<tr><td colspan="4" style="background:var(--soft);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--sub)">${t}</td></tr>`;
   let body="";
-  if(scouts.length)body+=subhead("Scouts")+scouts.map(scoutRow).join("");
-  if(leaders.length)body+=subhead("Leaders")+leaders.map(leaderRow).join("");
+  if(scouts.length)body+=subhead("Scouts — individual marks")+scouts.map(scoutRow).join("");
+  if(leaders.length)body+=subhead("Leaders — attendance only")+leaders.map(leaderRow).join("");
   $("#content").innerHTML=`
     ${canEdit?"":`<div class="banner">You're signed in as a Scout — this is view-only. Only leaders can record attendance and marks.</div>`}
-    <div class="card row" style="align-items:flex-end;margin-bottom:14px">
-      <label><span class="lab">Sunday date</span><input id="sD" class="input" type="date" value="${sDate}"/></label>
-      <label><span class="lab">Section</span><select id="sS" class="input">${SECTIONS.map(s=>`<option ${sSec===s.name?"selected":""}>${s.name}</option>`).join("")}</select></label>
-      <div style="flex:1"></div><div class="muted" id="sCount"></div>
-      ${canEdit?`<button class="btn btn-primary" id="sSave">💾 Save session</button>`:""}</div>
-    ${all.length?`<div class="tablewrap scrollx"><table><thead><tr>${["Name","Patrol / Type","Present","Marks"].map(h=>`<th>${h}</th>`).join("")}</tr></thead>
+    <div class="card" style="margin-bottom:14px">
+      <div class="row" style="align-items:flex-end">
+        <label><span class="lab">Sunday date</span><input id="sD" class="input" type="date" value="${sDate}"/></label>
+        <label><span class="lab">Section</span><select id="sS" class="input">${SECTIONS.map(s=>`<option ${sSec===s.name?"selected":""}>${s.name}</option>`).join("")}</select></label>
+        <label style="flex:1;min-width:160px"><span class="lab">Activity / competition (optional)</span><input id="sAct" class="input" value="${esc(sAct)}" placeholder="e.g. Knot relay, Drill" ${canEdit?"":"disabled"}/></label>
+        <div class="muted" id="sCount"></div>
+        ${canEdit?`<button class="btn btn-primary" id="sSave">💾 Save session</button>`:""}
+      </div>
+    </div>
+    ${all.length?`<div class="tablewrap scrollx" style="margin-bottom:14px"><table><thead><tr>${["Name","Patrol / Type","Present","Marks"].map(h=>`<th>${h}</th>`).join("")}</tr></thead>
       <tbody>${body}</tbody></table></div>`
-      :`<div class="card" style="text-align:center;color:var(--sub);padding:40px">No active members in ${sSec}.</div>`}
-    <div class="muted" style="margin-top:10px">Scouts' marks feed the leaderboard. Leaders are tracked for attendance only.</div>`;
+      :`<div class="card" style="text-align:center;color:var(--sub);padding:40px;margin-bottom:14px">No active members in ${sSec}.</div>`}
+    ${patrols.length?`<div class="card">
+      <div style="font-weight:700;margin-bottom:4px">🏅 ${gLabel} competition — team marks</div>
+      <div class="muted" style="margin-bottom:12px">A separate score you award to each ${gLabel.toLowerCase()} as a team (not the sum of individual marks).</div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+        ${patrols.map(p=>`<label style="border:1px solid var(--line);border-radius:10px;padding:10px"><span class="lab">${esc(p)}</span>
+          <input class="input" type="number" data-pp="${esc(p)}" placeholder="0" value="${sPat[p]}" ${canEdit?"":"disabled"}/></label>`).join("")}
+      </div></div>`:""}
+    <div class="muted" style="margin-top:10px">Individual marks feed Best ${sectionMeta(sSec).indiv}. ${gLabel} team marks feed Best ${gLabel}.</div>`;
   const refresh=()=>{const p=Object.values(sDraft).filter(v=>v.present).length;$("#sCount").textContent=`${p}/${all.length} present`+(existing?" · saved":"");};
   const paint=()=>{$("#content").querySelectorAll(".pres").forEach(b=>{const on=sDraft[b.dataset.pk].present;b.textContent=on?"Present":"Absent";b.style.background=on?"var(--activeBg)":"var(--offBg)";b.style.color=on?"var(--activeText)":"var(--offText)";b.style.border="none";});};
   $("#sD").onchange=e=>{sDate=e.target.value;renderSessions();};
   $("#sS").onchange=e=>{sSec=e.target.value;renderSessions();};
   if(canEdit){
+    $("#sAct").oninput=e=>{sAct=e.target.value;};
     $("#content").querySelectorAll(".pres").forEach(b=>b.onclick=()=>{sDraft[b.dataset.pk].present=!sDraft[b.dataset.pk].present;paint();refresh();});
     $("#content").querySelectorAll("[data-mk]").forEach(i=>i.oninput=()=>{sDraft[i.dataset.mk].points=i.value;});
-    $("#sSave").onclick=async()=>{const records={};Object.entries(sDraft).forEach(([k,v])=>{records[k]={present:!!v.present,points:Number(v.points)||0};});state.sessions[sDate+"|"+sSec]={date:sDate,section:sSec,records};await saveSessions();toast("Session saved");renderSessions();};
+    $("#content").querySelectorAll("[data-pp]").forEach(i=>i.oninput=()=>{sPat[i.dataset.pp]=i.value;});
+    $("#sSave").onclick=async()=>{
+      const records={};Object.entries(sDraft).forEach(([k,v])=>{records[k]={present:!!v.present,points:Number(v.points)||0};});
+      const patrolPoints={};Object.entries(sPat).forEach(([p,v])=>{patrolPoints[p]=Number(v)||0;});
+      state.sessions[sDate+"|"+sSec]={date:sDate,section:sSec,activity:sAct,records,patrolPoints};
+      await saveSessions();toast("Session saved");renderSessions();};
   }
   paint();refresh();
 }
@@ -403,11 +423,18 @@ function renderBoard(){
   const scouts=state.members.filter(m=>m.memberType==="Scout"&&m.section===bSec);
   const stat=scouts.map(m=>{let pts=0,pres=0;sessions.forEach(s=>{const r=s.records[m._k];if(r){pts+=Number(r.points)||0;if(r.present)pres++;}});return{m,pts,pres,held:sessions.length};});
   const bestScouts=[...stat].sort((a,b)=>b.pts-a.pts);
-  const pa={};(state.patrols[bSec]||[]).forEach(p=>pa[p]={pts:0,count:0});
-  stat.forEach(r=>{const p=r.m.patrol;if(!p)return;(pa[p]=pa[p]||{pts:0,count:0});pa[p].pts+=r.pts;pa[p].count++;});
-  const bestPatrols=Object.entries(pa).map(([name,v])=>({name,...v})).sort((a,b)=>b.pts-a.pts);
-  const rc=i=>["#caa23a","#9aa3ad","#c08457"][i]||"var(--line)";
-  const row=(i,name,sub,val)=>`<div class="row" style="gap:12px;padding:9px 10px"><div class="rank-no" style="background:${rc(i)}">${i+1}</div><div style="flex:1;min-width:0"><div style="font-weight:600">${esc(name)}</div><div class="muted">${esc(sub)}</div></div><div style="font-weight:700;font-size:18px;color:var(--primaryDark)">${val}</div></div>`;
+  const counts={};(state.patrols[bSec]||[]).forEach(p=>counts[p]=0);
+  scouts.forEach(m=>{if(m.patrol){counts[m.patrol]=(counts[m.patrol]||0)+1;}});
+  const pa={};(state.patrols[bSec]||[]).forEach(p=>pa[p]=0);
+  sessions.forEach(s=>{const pp=s.patrolPoints||{};Object.entries(pp).forEach(([p,v])=>{pa[p]=(pa[p]||0)+(Number(v)||0);});});
+  const bestPatrols=Object.entries(pa).map(([name,pts])=>({name,pts,count:counts[name]||0})).sort((a,b)=>b.pts-a.pts);
+  const maxI=bestScouts.length?bestScouts[0].pts:0,maxP=bestPatrols.length?bestPatrols[0].pts:0;
+  const rc=i=>["#caa23a","#9aa3ad","#c08457"][i]||"#cfd6dd";
+  const bar=(v,mx,c)=>`<div style="height:7px;background:var(--soft);border-radius:5px;overflow:hidden;margin-top:7px"><div style="height:100%;width:${mx>0?Math.max(3,Math.round(v/mx*100)):0}%;background:${c};border-radius:5px;transition:width .4s"></div></div>`;
+  const row=(i,name,sub,val,mx,c)=>`<div style="padding:11px 12px;border-bottom:1px solid var(--line)">
+    <div class="row" style="gap:12px"><div class="rank-no" style="background:${rc(i)}">${i+1}</div>
+    <div style="flex:1;min-width:0"><div style="font-weight:600">${esc(name)}</div><div class="muted">${esc(sub)}</div></div>
+    <div style="font-weight:800;font-size:19px;color:${c}">${val}</div></div>${bar(val,mx,c)}</div>`;
   const empty=`<div class="muted" style="text-align:center;padding:26px">No marks recorded for this range.</div>`;
   $("#content").innerHTML=`
     <div class="row" style="align-items:flex-end;margin-bottom:16px">
@@ -416,8 +443,8 @@ function renderBoard(){
       <label><span class="lab">To</span><input id="bT" class="input" type="date" value="${bTo}"/></label>
       <div class="muted" style="padding-bottom:9px">${sessions.length} session(s)</div></div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
-      <div class="tablewrap"><div style="padding:13px 16px;border-bottom:1px solid var(--line);font-weight:700">⭐ Best ${sectionMeta(bSec).indiv}</div><div style="padding:8px">${bestScouts.length?bestScouts.map((r,i)=>row(i,r.m.name,`${r.m.patrol||"—"} · present ${r.pres}/${r.held}`,r.pts)).join(""):empty}</div></div>
-      <div class="tablewrap"><div style="padding:13px 16px;border-bottom:1px solid var(--line);font-weight:700">🏅 Best ${sectionMeta(bSec).group}</div><div style="padding:8px">${bestPatrols.some(p=>p.count)?bestPatrols.map((p,i)=>row(i,p.name,`${p.count} scout(s)`,p.pts)).join(""):empty}</div></div></div>`;
+      <div class="tablewrap"><div style="padding:13px 16px;border-bottom:1px solid var(--line);font-weight:700">⭐ Best ${sectionMeta(bSec).indiv} — individual</div><div>${bestScouts.length&&maxI>0?bestScouts.map((r,i)=>row(i,r.m.name,`${r.m.patrol||"—"} · present ${r.pres}/${r.held}`,r.pts,maxI,"var(--primary)")).join(""):empty}</div></div>
+      <div class="tablewrap"><div style="padding:13px 16px;border-bottom:1px solid var(--line);font-weight:700">🏅 Best ${sectionMeta(bSec).group} — team</div><div>${bestPatrols.length&&maxP>0?bestPatrols.map((p,i)=>row(i,p.name,`${p.count} scout(s)`,p.pts,maxP,"var(--amber)")).join(""):empty}</div></div></div>`;
   $("#bS").onchange=e=>{bSec=e.target.value;renderBoard();};
   $("#bF").onchange=e=>{bFrom=e.target.value;renderBoard();};
   $("#bT").onchange=e=>{bTo=e.target.value;renderBoard();};
