@@ -63,6 +63,7 @@ const SUPABASE_ANON = "sb_publishable_6SOmSq9XCSH-tokEoZTnbg_DMhhordC";
 /* ============================================================ */
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const APP_VERSION = "v9 · fees-fix";
 
 /* ----------------------------- model ---------------------------------- */
 const SECTIONS=[
@@ -182,6 +183,7 @@ function renderApp(){
         <div><h1>${esc(state.institution)}</h1><div class="muted">${esc(state.association)}</div></div></div>
       <div class="row" style="gap:8px">
         <span class="pill" style="background:${canEdit?"var(--activeBg)":"var(--offBg)"};color:${canEdit?"var(--activeText)":"var(--offText)"}">${canEdit?"Leader":"Scout · view only"}</span>
+        <span class="muted" style="font-size:11px">${APP_VERSION}</span>
         <button class="btn" id="logoutBtn">Log out</button>
       </div>
     </div>
