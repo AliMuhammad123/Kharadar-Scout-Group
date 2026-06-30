@@ -63,7 +63,7 @@ const SUPABASE_ANON = "sb_publishable_6SOmSq9XCSH-tokEoZTnbg_DMhhordC";
 /* ============================================================ */
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-const APP_VERSION = "v10 · fees";
+const APP_VERSION = "v11 · library";
 
 /* ----------------------------- model ---------------------------------- */
 const SECTIONS=[
@@ -75,7 +75,15 @@ const MEMBER_TYPES=["Scout","Leader","Senior Leader"];
 const LEADER_ROLES=["GSL","Section Leader","Finance Member","Secretary","Assistant Leader"];
 const sectionMeta=n=>SECTIONS.find(s=>s.name===n)||{color:"#5b6b7b",group:"Group",indiv:"Member"};
 
-let state={institution:"",association:"",patrols:{},rankBadges:{},proficiencyBadges:[],members:[],sessions:{},activities:{},attendanceBonus:2,gslEmail:"",feeMonthly:{Shaheen:20,"Boy Scout":50,Rover:100},fees:{}};
+let state={institution:"",association:"",patrols:{},rankBadges:{},proficiencyBadges:[],members:[],sessions:{},activities:{},attendanceBonus:2,gslEmail:"",feeMonthly:{Shaheen:20,"Boy Scout":50,Rover:100},fees:{},resources:[]};
+function defaultResources(){return[
+  {id:uid(),title:"Itehad Badge Book",url:"",note:""},
+  {id:uid(),title:"Tanzeem Badge Book",url:"",note:""},
+  {id:uid(),title:"Yaqeen Badge Book",url:"",note:""},
+  {id:uid(),title:"Rehnumaye Scouts Book",url:"",note:""},
+  {id:uid(),title:"POR (Policy, Organisation & Rules)",url:"",note:""},
+  {id:uid(),title:"Badge System",url:"",note:""},
+];}
 let currentUser=null,currentRole="scout",canEdit=false,tab="dash";
 function canDelete(){return canEdit&&currentUser&&state.gslEmail&&(currentUser.email||"").toLowerCase()===String(state.gslEmail).toLowerCase();}
 
@@ -115,12 +123,14 @@ async function loadAll(){
     sessions:map.sessions||{},
     activities:map.activities||{},
     fees:map.fees||{},
+    resources:map.resources!==undefined?map.resources:defaultResources(),
   };
 }
 async function saveMembers(){const{error}=await sb.from("registry").upsert({key:"members",value:state.members});if(error)toast("Save failed: "+error.message);}
 async function saveSessions(){const{error}=await sb.from("registry").upsert({key:"sessions",value:state.sessions});if(error)toast("Save failed: "+error.message);}
 async function saveActivities(){const{error}=await sb.from("registry").upsert({key:"activities",value:state.activities});if(error)toast("Save failed: "+error.message);}
 async function saveFees(){const{error}=await sb.from("registry").upsert({key:"fees",value:state.fees});if(error)toast("Save failed: "+error.message);}
+async function saveResources(){const{error}=await sb.from("registry").upsert({key:"resources",value:state.resources});if(error)toast("Save failed: "+error.message);}
 async function saveConfig(){const cfg={institution:state.institution,association:state.association,patrols:state.patrols,rankBadges:state.rankBadges,proficiencyBadges:state.proficiencyBadges,attendanceBonus:state.attendanceBonus,gslEmail:state.gslEmail,feeMonthly:state.feeMonthly};const{error}=await sb.from("registry").upsert({key:"config",value:cfg});if(error)toast("Save failed: "+error.message);}
 
 /* ============================== auth =================================== */
@@ -175,7 +185,7 @@ async function logout(){await sb.auth.signOut();currentUser=null;renderAuth();}
 
 /* ============================== shell ================================= */
 function renderApp(){
-  const tabs=[["dash","🏕️ Dashboard"],["members","👥 Members"],["sessions","✅ Attendance & Marks"],["board","🏆 Leaderboard"],["planner","🗓️ Sunday Planner"]];
+  const tabs=[["dash","🏕️ Dashboard"],["members","👥 Members"],["sessions","✅ Attendance & Marks"],["board","🏆 Leaderboard"],["planner","🗓️ Sunday Planner"],["library","📚 Library"]];
   if(canEdit)tabs.push(["fees","💰 Fees"],["reports","📄 Reports"],["settings","⚙️ Settings"]);
   $("#app").innerHTML=`<div class="wrap">
     <div class="row" style="justify-content:space-between;margin-bottom:6px">
@@ -191,7 +201,7 @@ function renderApp(){
     <div id="content"></div></div>`;
   $("#logoutBtn").onclick=logout;
   $("#tabbar").querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;renderApp();});
-  ({dash:renderDash,members:renderMembers,sessions:renderSessions,board:renderBoard,planner:renderPlanner,fees:renderFees,reports:renderReports,settings:renderSettings}[tab]||renderDash)();
+  ({dash:renderDash,members:renderMembers,sessions:renderSessions,board:renderBoard,planner:renderPlanner,library:renderLibrary,fees:renderFees,reports:renderReports,settings:renderSettings}[tab]||renderDash)();
 }
 
 /* ============================== dashboard ============================= */
@@ -650,6 +660,52 @@ function openActivity(it){
     const d=state.activities[pDate]||{date:pDate,items:[]};
     d.items=isEdit?d.items.map(x=>x.id===v.id?v:x):[...d.items,v];
     state.activities[pDate]=d;await saveActivities();bg.remove();renderPlanner();toast("Saved");
+  };
+}
+
+/* =============================== library ============================= */
+function fixUrl(u){u=(u||"").trim();if(!u)return"";return /^https?:\/\//i.test(u)?u:"https://"+u;}
+function renderLibrary(){
+  const res=state.resources||[];
+  $("#content").innerHTML=`
+    <div class="row" style="justify-content:space-between;margin-bottom:14px">
+      <div><h2 style="font-size:18px">Course books & resources</h2><div class="muted">Tap a book to open or download the PDF.</div></div>
+      ${canEdit?`<button class="btn btn-primary" id="addRes">＋ Add resource</button>`:""}</div>
+    ${res.length?`<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">${res.map(r=>{
+      const url=fixUrl(r.url);
+      return `<div class="card" style="display:flex;flex-direction:column;gap:8px">
+        <div class="row" style="justify-content:space-between;align-items:flex-start">
+          <div style="min-width:0"><div style="font-weight:700">📕 ${esc(r.title)}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:""}</div>
+          ${canEdit?`<div style="white-space:nowrap"><button class="icon-btn" data-re="${r.id}">✏️</button>${canDelete()?`<button class="icon-btn" data-rd="${r.id}">🗑️</button>`:""}</div>`:""}
+        </div>
+        ${url?`<a href="${esc(url)}" target="_blank" rel="noopener" class="btn btn-primary" style="justify-content:center;text-decoration:none">📂 Open PDF</a>`
+             :`<div class="muted" style="background:var(--soft);border-radius:8px;padding:8px;text-align:center">${canEdit?"No link yet — tap ✏️ to add the PDF link":"Coming soon"}</div>`}
+      </div>`;}).join("")}</div>`
+    :`<div class="card" style="text-align:center;color:var(--sub);padding:40px">No resources yet.${canEdit?" Add the first one.":""}</div>`}
+    <div class="muted" style="margin-top:14px">Tip for leaders: upload each book to Google Drive, set sharing to “Anyone with the link”, copy the link, and paste it here.</div>`;
+  if($("#addRes"))$("#addRes").onclick=()=>openResource(null);
+  if(canEdit){
+    $("#content").querySelectorAll("[data-re]").forEach(b=>b.onclick=()=>openResource(res.find(r=>r.id==b.dataset.re)));
+    $("#content").querySelectorAll("[data-rd]").forEach(b=>b.onclick=()=>{const r=res.find(x=>x.id==b.dataset.rd);confirmBox("Remove resource?",`Remove “${r.title}” from the library.`,async()=>{state.resources=state.resources.filter(x=>x.id!==r.id);await saveResources();renderLibrary();toast("Removed");},"Remove",true);});
+  }
+}
+function openResource(r){
+  const isEdit=!!r;const f=r?{...r}:{id:uid(),title:"",url:"",note:""};
+  const bg=document.createElement("div");bg.className="modal-bg";
+  bg.innerHTML=`<div class="modal" style="max-width:460px">
+    <div class="row" style="justify-content:space-between"><h2>${isEdit?"Edit resource":"Add resource"}</h2><button class="icon-btn" id="rx">✕</button></div>
+    <div class="grid" style="gap:13px;margin-top:14px">
+      <label><span class="lab">Title *</span><input class="input" id="rTitle" value="${esc(f.title)}" placeholder="e.g. Itehad Badge Book"/></label>
+      <label><span class="lab">PDF link (Google Drive, etc.)</span><input class="input" id="rUrl" value="${esc(f.url)}" placeholder="https://drive.google.com/..."/></label>
+      <label><span class="lab">Note (optional)</span><input class="input" id="rNote" value="${esc(f.note)}" placeholder="e.g. Shaheen section"/></label></div>
+    <div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn" id="rc">Cancel</button><button class="btn btn-primary" id="rs">💾 Save</button></div></div>`;
+  document.body.appendChild(bg);bg.onclick=e=>{if(e.target===bg)bg.remove();};
+  bg.querySelector("#rx").onclick=()=>bg.remove();bg.querySelector("#rc").onclick=()=>bg.remove();
+  bg.querySelector("#rs").onclick=async()=>{
+    const v={id:f.id,title:bg.querySelector("#rTitle").value.trim(),url:bg.querySelector("#rUrl").value.trim(),note:bg.querySelector("#rNote").value.trim()};
+    if(!v.title)return toast("Title is required");
+    state.resources=isEdit?state.resources.map(x=>x.id===v.id?v:x):[...state.resources,v];
+    await saveResources();bg.remove();renderLibrary();toast("Saved");
   };
 }
 
