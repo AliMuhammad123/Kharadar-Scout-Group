@@ -63,7 +63,7 @@ const SUPABASE_ANON = "sb_publishable_6SOmSq9XCSH-tokEoZTnbg_DMhhordC";
 /* ============================================================ */
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-const APP_VERSION = "v12 · unique-ids";
+const APP_VERSION = "v13 · auto-id";
 
 /* ----------------------------- model ---------------------------------- */
 const SECTIONS=[
@@ -330,7 +330,7 @@ function drawMemberModal(isEdit){
     <div class="row" style="justify-content:space-between"><h2>${isEdit?"Edit member":"Add member"}</h2><button class="icon-btn" id="mx">✕</button></div>
     <div class="grid" style="gap:13px;margin-top:14px">
       <div class="grid" style="grid-template-columns:1fr 1fr;gap:13px">
-        <label><span class="lab">Member ID</span><input class="input mono" data-f="id" value="${esc(f.id)}"/></label>
+        <label><span class="lab">Member ID (auto)</span><input class="input mono" value="${esc(f.id)}" disabled style="background:var(--soft);color:var(--sub)"/></label>
         <label><span class="lab">Status</span><select class="input" data-f="status"><option ${f.status==="Active"?"selected":""}>Active</option><option ${f.status==="Inactive"?"selected":""}>Inactive</option></select></label></div>
       <label><span class="lab">Full name *</span><input class="input" data-f="name" value="${esc(f.name)}"/></label>
       <div class="grid" style="grid-template-columns:1fr 1fr;gap:13px">
