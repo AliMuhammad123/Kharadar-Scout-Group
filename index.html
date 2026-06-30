@@ -63,7 +63,7 @@ const SUPABASE_ANON = "sb_publishable_6SOmSq9XCSH-tokEoZTnbg_DMhhordC";
 /* ============================================================ */
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-const APP_VERSION = "v11 · library";
+const APP_VERSION = "v12 · unique-ids";
 
 /* ----------------------------- model ---------------------------------- */
 const SECTIONS=[
@@ -94,7 +94,7 @@ function ageFrom(dob){if(!dob)return null;const d=new Date(dob);if(isNaN(d))retu
 function lastSunday(){const t=new Date();const s=new Date(t);s.setDate(t.getDate()-t.getDay());return s.toISOString().slice(0,10);}
 function nextSunday(){const t=new Date();const s=new Date(t);const d=t.getDay();s.setDate(t.getDate()+((7-d)%7));return s.toISOString().slice(0,10);}
 function fmtDate(s){return s?new Date(s).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—";}
-function nextId(){let m=0;state.members.forEach(x=>{const n=parseInt(String(x.id).replace(/\D/g,""),10);if(!isNaN(n)&&n>m)m=n;});return"KSG-"+String(m+1).padStart(4,"0");}
+function nextId(exceptKey){const taken=new Set(state.members.filter(m=>m._k!==exceptKey).map(m=>String(m.id)));let m=0;state.members.forEach(x=>{const n=parseInt(String(x.id).replace(/\D/g,""),10);if(!isNaN(n)&&n>m)m=n;});let n,cand;n=m;do{n++;cand="KSG-"+String(n).padStart(4,"0");}while(taken.has(cand));return cand;}
 function uid(){return Date.now()+"."+Math.floor(Math.random()*1e6);}
 function toast(t){let e=document.createElement("div");e.className="toast";e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),2200);}
 function download(text,name,type){const b=new Blob([text],{type});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
@@ -358,6 +358,7 @@ function drawMemberModal(isEdit){
   bindBadges(bg,isEdit);
   bg.querySelector("#ms").onclick=async()=>{
     if(!mform.name.trim())return toast("Name is required");
+    if(!String(mform.id).trim()||state.members.some(m=>m._k!==mform._k&&String(m.id)===String(mform.id))){const fresh=nextId(mform._k);if(String(mform.id).trim())toast("ID "+mform.id+" was already used — assigned "+fresh);mform.id=fresh;}
     const exists=state.members.some(m=>m._k===mform._k);
     state.members=exists?state.members.map(m=>m._k===mform._k?mform:m):[...state.members,mform];
     await saveMembers();bg.remove();renderMembers();toast(exists?"Member updated":"Member added");};
@@ -517,8 +518,8 @@ function renderSettings(){
       </div>
       <button class="btn btn-primary" id="saveFeeCfg" style="margin-top:12px">💾 Save fees</button></div>
     <div class="card"><h3>Data & backup</h3>
-      <div class="row"><button class="btn" id="expCSV">⬇️ Members CSV</button><button class="btn" id="expJSON">⬇️ Full backup (JSON)</button></div>
-      <p class="muted" style="margin-bottom:0">Your live data is in the database. This backup is an extra safety copy.</p></div>
+      <div class="row"><button class="btn" id="expCSV">⬇️ Members CSV</button><button class="btn" id="expJSON">⬇️ Full backup (JSON)</button><button class="btn" id="fixIds">🔧 Fix duplicate IDs</button></div>
+      <p class="muted" style="margin-bottom:0">Your live data is in the database. This backup is an extra safety copy. “Fix duplicate IDs” gives every member a unique KSG number.</p></div>
     ${canDelete()?`<div class="card" style="border-color:#f0c8c4"><h3 style="color:var(--danger)">Danger zone — GSL only</h3>
       <div class="row"><button class="btn btn-danger" id="delSessions">🗑️ Delete ALL sessions & marks</button><button class="btn btn-danger" id="delActs">🗑️ Delete ALL planned activities</button></div>
       <p class="muted" style="margin-bottom:0">Wipes every recorded Sunday (across all sections) or the whole planner. Useful for clearing test data. Members and badges are kept.</p></div>`:""}</div>`;
@@ -534,6 +535,11 @@ function renderSettings(){
   if($("#delActs"))$("#delActs").onclick=()=>confirmBox("Delete ALL activities?","This permanently removes every planned Sunday activity.",async()=>{state.activities={};await saveActivities();renderSettings();toast("All activities deleted");},"Delete all",true);
   $("#expCSV").onclick=()=>{const cols=["id","name","memberType","role","section","patrol","email","contact","dob","joinDate","status"];const e=v=>`"${String(v==null?"":v).replace(/"/g,'""')}"`;const rows=[cols.join(","),...state.members.map(m=>cols.map(c=>e(m[c])).join(","))];download(rows.join("\n"),"ksg_members.csv","text/csv");};
   $("#expJSON").onclick=()=>download(JSON.stringify(state,null,2),"ksg_backup.json","application/json");
+  if($("#fixIds"))$("#fixIds").onclick=()=>confirmBox("Fix duplicate IDs?","Every member will get a unique KSG number. Members with duplicate or blank IDs get re-numbered; the rest stay the same.",async()=>{
+    const seen=new Set();let changed=0;
+    state.members.forEach(m=>{let id=String(m.id||"").trim();if(!id||seen.has(id)){m.id=nextId(m._k);changed++;}seen.add(String(m.id));});
+    if(changed){await saveMembers();}toast(changed?`Fixed ${changed} ID(s)`:"All IDs already unique");renderSettings();
+  },"Fix IDs");
 }
 
 /* =========================== sunday planner ========================== */
